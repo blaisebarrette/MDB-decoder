@@ -4,3 +4,7 @@
 *swp
 *~
 *bak
+
+# Ignore build artifacts for MyDecoders
+MyDecoders/bin/
+MyDecoders/obj/
