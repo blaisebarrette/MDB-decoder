@@ -18,7 +18,7 @@
         <Version>v9.0</Version>
       </Platform>
       <Platform Name="Windows">
-        <Version>v4.0</Version>
+        <Version>v4.8</Version>
       </Platform>
       <Platform Name="WindowsGL">
         <Version>v4.0</Version>
