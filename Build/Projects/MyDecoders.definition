@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project
-  Name="MyDecoders"       <!-- Project Name -->
-  Path="MyDecoders"      <!-- Path to the project folder relative to the submodule root -->
-  Type="Library"         <!-- Type of project -->
-  Platforms="Windows">    <!-- Only build for Windows for now, add others if needed -->
+  Name="MyDecoders"
+  Path="MyDecoders"
+  Type="Library"
+  Platforms="Windows">
 
   <References>
     <!-- Reference to the Interfaces project -->
