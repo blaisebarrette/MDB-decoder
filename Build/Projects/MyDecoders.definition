@@ -30,7 +30,7 @@
     <!-- Ensure correct target framework -->
     <FrameworkVersions>
       <Platform Name="Windows">
-        <Version>v4.8</Version>
+        <Version>v4.7.2</Version>
       </Platform>
     </FrameworkVersions>
 
