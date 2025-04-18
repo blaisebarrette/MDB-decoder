@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project
+  Name="MyDecoders"       <!-- Project Name -->
+  Path="MyDecoders"      <!-- Path to the project folder relative to the submodule root -->
+  Type="Library"         <!-- Type of project -->
+  Platforms="Windows">    <!-- Only build for Windows for now, add others if needed -->
+
+  <References>
+    <!-- Reference to the Interfaces project -->
+    <Reference Include="LabNationInterfaces" />
+    
+    <!-- Standard .NET references needed -->
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.ComponentModel.Composition" />
+    
+    <!-- Add other references if MyDecoders.csproj needs them -->
+    
+  </References>
+
+  <Files>
+    <!-- Include all C# files in the MyDecoders folder -->
+    <Compile Include="*.cs" />
+  </Files>
+
+  <Properties>
+    <!-- Ensure consistent language version -->
+    <LangVersion>5</LangVersion> 
+    
+    <!-- Ensure correct target framework -->
+    <FrameworkVersions>
+      <Platform Name="Windows">
+        <Version>v4.8</Version>
+      </Platform>
+    </FrameworkVersions>
+
+    <!-- Ensure output path matches others if needed, or keep default -->
+    <PlatformSpecificOutputFolder>False</PlatformSpecificOutputFolder> 
+    
+    <!-- Add other properties if needed -->
+    
+  </Properties>
+
+</Project> 
