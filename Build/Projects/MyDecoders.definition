@@ -25,7 +25,7 @@
 
   <Properties>
     <!-- Ensure consistent language version -->
-    <LangVersion>5</LangVersion> 
+    <LangVersion>latest</LangVersion>
     
     <!-- Ensure correct target framework -->
     <FrameworkVersions>
