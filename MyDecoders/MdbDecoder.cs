@@ -42,6 +42,8 @@ namespace LabNation.Decoders
                     Parameters = new DecoderParameter[]
                     {
                        // Removed UART specific parameters like Baud, Bits, Parity, Stopbits, Mode
+                       // Add a dummy parameter in case the loader dislikes empty arrays
+                       new DecoderParameterInts("DummyParam", new[] { 0 }, "Dummy", 0, "Unused parameter to potentially prevent settings load crash.")
                     }
                 };
             }
