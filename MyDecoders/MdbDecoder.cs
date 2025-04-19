@@ -59,7 +59,7 @@ namespace LabNation.Decoders
             var decoderOutputList = new List<DecoderOutput>();
             const int MDB_BAUDRATE = 9600;
             // MDB timings (from Référence MDB.md)
-            const double T_INTER_BYTE_MAX_MS = 1.0; // Max inter-byte time during send
+            const double T_INTER_BYTE_MAX_MS = 2.0; // Max inter-byte time during send - Increased threshold to 2.0ms
             const double T_RESPONSE_MAX_MS = 5.0;   // Max response time for peripheral
 
             try
