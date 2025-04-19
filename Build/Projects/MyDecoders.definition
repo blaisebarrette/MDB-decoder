@@ -1,44 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project
   Name="MyDecoders"
-  Path="MyDecoders"
+  Path="MyDecoders" 
   Type="Library"
   Platforms="Windows">
 
   <References>
-    <!-- Reference to the Interfaces project -->
     <Reference Include="LabNationInterfaces" />
-    
-    <!-- Standard .NET references needed -->
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.ComponentModel.Composition" />
-    
-    <!-- Add other references if MyDecoders.csproj needs them -->
-    
   </References>
 
   <Files>
-    <!-- Include all C# files in the MyDecoders folder -->
     <Compile Include="*.cs" />
   </Files>
 
   <Properties>
-    <!-- Ensure consistent language version -->
     <LangVersion>latest</LangVersion>
-    
-    <!-- Ensure correct target framework -->
     <FrameworkVersions>
       <Platform Name="Windows">
         <Version>v4.7.2</Version>
       </Platform>
     </FrameworkVersions>
-
-    <!-- Ensure output path matches others if needed, or keep default -->
     <PlatformSpecificOutputFolder>False</PlatformSpecificOutputFolder> 
-    
-    <!-- Add other properties if needed -->
-    
   </Properties>
 
 </Project> 
