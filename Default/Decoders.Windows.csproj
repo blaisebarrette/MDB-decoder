@@ -1,0 +1,104 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>10.0.0</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{6F636544-6564-7372-2E57-696E646F7773}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>LabNation</RootNamespace>
+    <AssemblyName>Decoders</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>1591</NoWarn>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <TargetFrameworkProfile />
+    <LangVersion>5</LangVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <Optimize>false</Optimize>
+    <DebugType>full</DebugType>
+    <OutputPath>bin\Debug</OutputPath>
+    <IntermediateOutputPath>obj\Debug</IntermediateOutputPath>
+    <DocumentationFile>bin\Debug\Decoders.xml</DocumentationFile>
+    <DefineConstants>DEBUG;TRACE;WINDOWS</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <OutputPath>bin\Release</OutputPath>
+    <IntermediateOutputPath>obj\Release</IntermediateOutputPath>
+    <DocumentationFile>bin\Release\Decoders.xml</DocumentationFile>
+    <DefineConstants>TRACE;WINDOWS</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.ComponentModel.Composition" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Decoder3WireSPI.cs" />
+    <Compile Include="Decoder4WireSPI.cs" />
+    <Compile Include="DecoderI2C.cs" />
+    <Compile Include="DecoderI2S.cs" />
+    <Compile Include="DecoderMdb.cs" />
+    <Compile Include="DecoderBus.cs" />
+    <Compile Include="DecoderUART.cs" />
+    <Compile Include="Decoder1Wire.cs" />
+    <Compile Include="DecoderEdgeCounter.cs" />
+    <Compile Include="DecoderEdgeIntervals.cs" />
+    <Compile Include="DecoderSmartScopeFPGA.cs" />
+    <Compile Include="OperatorAnalogAbs.cs" />
+    <Compile Include="OperatorAnalogAverage.cs" />
+    <Compile Include="OperatorAnalogImportDigital.cs" />
+    <Compile Include="OperatorAnalogInvert.cs" />
+    <Compile Include="OperatorAnalogMath.cs" />
+    <Compile Include="OperatorAnalogAdd.cs" />
+    <Compile Include="OperatorAnalogSubtract.cs" />
+    <Compile Include="OperatorDigitalManchester.cs" />
+    <Compile Include="OperatorDigitalInvert.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup />
+  <ItemGroup />
+  <ItemGroup />
+  <ItemGroup />
+  <ItemGroup />
+  <ItemGroup />
+  <ItemGroup />
+  <ItemGroup />
+  <ItemGroup />
+  <ItemGroup />
+  <ItemGroup />
+  <ItemGroup />
+  <ItemGroup />
+  <ItemGroup />
+  <ItemGroup />
+  <ItemGroup />
+  <ItemGroup />
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <_PostBuildHookTimestamp>@(IntermediateAssembly-&gt;'%(FullPath).timestamp')</_PostBuildHookTimestamp>
+  </PropertyGroup>
+  <Target Name="PostBuildHooks" Inputs="@(IntermediateAssembly);@(ReferencePath)" Outputs="@(IntermediateAssembly);$(_PostBuildHookTimestamp)" AfterTargets="CoreCompile" BeforeTargets="AfterCompile">
+    <Touch Files="$(_PostBuildHookTimestamp)" AlwaysCreate="True" />
+  </Target>
+  <ItemGroup>
+    <ProjectReference Include="..\Interfaces\LabNationInterfaces.Windows.csproj">
+      <Project>{7CD5C6AF-DDB8-D3D7-DDC0-E17465726661}</Project>
+      <Name>LabNationInterfaces.Windows</Name>
+    </ProjectReference>
+  </ItemGroup>
+</Project>
