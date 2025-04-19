@@ -273,8 +273,8 @@ namespace LabNation.Decoders
                             checksumOk = (currentFrame.Data == expectedChecksum);
                             blockComplete = true;
 
-                            string dataStr = string.Join(" ", currentBlock.GetRange(1, currentBlock.Count - 2).Select(f => $"0x{f.Data:X2}"));
-                            string title = $"Master Block [Addr: 0x{currentBlock[0].Data:X2}] Data: {dataStr} CHK: 0x{currentFrame.Data:X2}";
+                            string dataStr = string.Join(" ", currentBlock.GetRange(1, currentBlock.Count - 2).Select(f => string.Format("0x{0:X2}", f.Data)));
+                            string title = string.Format("Master Block [Addr: 0x{0:X2}] Data: {1} CHK: 0x{2:X2}", currentBlock[0].Data, dataStr, currentFrame.Data);
                             outputList.Add(new DecoderOutputEvent(currentBlock.First().StartIndex, currentFrame.EndIndex,
                                                                 checksumOk ? DecoderOutputColor.Blue : DecoderOutputColor.Red,
                                                                 checksumOk ? title : title + " (Error! Expected: 0x" + expectedChecksum.ToString("X2") + ")"));
@@ -307,8 +307,8 @@ namespace LabNation.Decoders
                                 expectedChecksum = CalculateChecksum(currentBlock.GetRange(0, currentBlock.Count - 1)); // Checksum sur toutes les données précédentes
                                 checksumOk = (currentFrame.Data == expectedChecksum);
 
-                                string dataStr = string.Join(" ", currentBlock.GetRange(0, currentBlock.Count - 1).Select(f => $"0x{f.Data:X2}"));
-                                string title = $"Slave Block Data: {dataStr} CHK: 0x{currentFrame.Data:X2}";
+                                string dataStr = string.Join(" ", currentBlock.GetRange(0, currentBlock.Count - 1).Select(f => string.Format("0x{0:X2}", f.Data)));
+                                string title = string.Format("Slave Block Data: {0} CHK: 0x{1:X2}", dataStr, currentFrame.Data);
                                 outputList.Add(new DecoderOutputEvent(currentBlock.First().StartIndex, currentFrame.EndIndex,
                                                                     checksumOk ? DecoderOutputColor.Green : DecoderOutputColor.Red,
                                                                     checksumOk ? title : title + " (Error! Expected: 0x" + expectedChecksum.ToString("X2") + ")"));
