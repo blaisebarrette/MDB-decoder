@@ -128,7 +128,39 @@ namespace LabNation.Decoders
                         bool stopBitOk = false;
                         int bitErrors = 0;
 
+                        // --- Corrected Sample Point Calculation ---
+                        // Calculate the index where the first data bit (Bit 0) *starts*
+                        int startOfBit0Index = frameStartIndex + samplesPerBit;
+
                         // Sample 8 Data Bits (LSB first)
+                        for (int bit = 0; bit < 8; bit++)
+                        {
+                            // Calculate the center sample point for the current data bit
+                            int sampleIndex = startOfBit0Index + (bit * samplesPerBit) + samplePointOffset;
+                            if (sampleIndex >= serialData.Length) goto EndProcessing; // Check bounds
+
+                            if (serialData[sampleIndex] == idleState) // Bit is high (1)
+                                currentByteValue |= (byte)(1 << bit);
+                            // else bit is low (0) - already initialized
+                        }
+
+                        // Sample Mode Bit (9th bit after start bit)
+                        // Center is 8.5 bit times after start of Bit 0
+                        int modeBitSampleIndex = startOfBit0Index + (8 * samplesPerBit) + samplePointOffset;
+                        if (modeBitSampleIndex >= serialData.Length) goto EndProcessing; // Check bounds
+                        modeBit = (serialData[modeBitSampleIndex] == idleState); // High level == 1
+
+                        // Check Stop Bit (10th bit after start bit)
+                        // Center is 9.5 bit times after start of Bit 0
+                        int stopBitSampleIndex = startOfBit0Index + (9 * samplesPerBit) + samplePointOffset;
+                        stopBitOk = false; // Assume error until proven otherwise
+                        if (stopBitSampleIndex >= 0 && stopBitSampleIndex < serialData.Length)
+                        {
+                             stopBitOk = (serialData[stopBitSampleIndex] == idleState); // Stop bit should be high (idle)
+                        }
+                        // --- End Corrected Sample Point Calculation ---
+
+                        /* --- Original Sampling Logic (Commented Out) ---
                         for (int bit = 0; bit < 8; bit++)
                         {
                             int sampleIndex = frameStartIndex + samplePointOffset + (bit * samplesPerBit);
@@ -136,37 +168,16 @@ namespace LabNation.Decoders
 
                             if (serialData[sampleIndex] != startBitValue) // Bit is high (1)
                                 currentByteValue |= (byte)(1 << bit);
-                            // else bit is low (0) - already initialized
                         }
-
-                        // Sample Mode Bit (9th bit)
                         int modeBitSampleIndex = frameStartIndex + samplePointOffset + (8 * samplesPerBit);
                         if (modeBitSampleIndex >= serialData.Length) goto EndProcessing; // Check bounds
                         modeBit = (serialData[modeBitSampleIndex] != startBitValue);
-
-                        // Check Stop Bit (should be Idle High)
-                        // --- Simpler Check: Sample only the center point --- 
                         int stopBitSampleIndex = frameStartIndex + samplePointOffset + (10 * samplesPerBit);
                         stopBitOk = false; // Assume error until proven otherwise
                         if (stopBitSampleIndex >= 0 && stopBitSampleIndex < serialData.Length)
                         {
                              stopBitOk = (serialData[stopBitSampleIndex] == idleState);
                         }
-                        // --- End Simpler Check ---
-
-                        /* --- Original Robustness Check (Commented Out) ---
-                        bool foundStopBit = false;
-                        for (int offset = -samplesPerBit / 4; offset <= samplesPerBit / 4; offset++)
-                        {
-                           int checkIdx = frameStartIndex + samplePointOffset + (10 * samplesPerBit) + offset;
-                           if (checkIdx >= 0 && checkIdx < serialData.Length) {
-                               if (serialData[checkIdx] == idleState) {
-                                   foundStopBit = true;
-                                   break;
-                               }
-                           }
-                        }
-                        stopBitOk = foundStopBit;
                         */
 
                         if (stopBitOk)
