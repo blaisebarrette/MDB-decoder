@@ -1,12 +1,18 @@
-using System;
-using System.Collections.Generic;
-using System.ComponentModel.Composition;
-using System.Linq;
-using LabNation.Interfaces;
-using System.Text; // Added for StringBuilder
+///////////////////
+//
+//  MDB decoder by Blaise Barrette
+//  https://github.com/BlaiseBarrette/MDB-Decoder
+//
 
 namespace LabNation.Decoders
 {
+    using System;
+    using System.Collections.Generic;
+    using System.ComponentModel.Composition;
+    using System.Linq;
+    using LabNation.Interfaces;
+    using System.Text; // Added for StringBuilder
+
     [Export(typeof(IDecoder))]
     public class DecoderMDB : IDecoder
     {
