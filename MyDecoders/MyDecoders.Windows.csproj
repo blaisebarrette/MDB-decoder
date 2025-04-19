@@ -7,8 +7,8 @@
     <SchemaVersion>2.0</SchemaVersion>
     <ProjectGuid>{6544ECC4-6F63-6564-7273-2E57696E646F}</ProjectGuid>
     <OutputType>Library</OutputType>
-    <RootNamespace>MyDecoders</RootNamespace>
-    <AssemblyName>MyDecoders</AssemblyName>
+    <RootNamespace>LabNation</RootNamespace>
+    <AssemblyName>Decoders</AssemblyName>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <NoWarn></NoWarn>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
@@ -22,7 +22,7 @@
     <OutputPath>bin\Debug</OutputPath>
     <IntermediateOutputPath>obj\Debug</IntermediateOutputPath>
     <DocumentationFile>bin\Debug\MyDecoders.xml</DocumentationFile>
-    <DefineConstants>DEBUG;PLATFORM_WINDOWS</DefineConstants>
+    <DefineConstants>DEBUG;TRACE;WINDOWS</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <Prefer32Bit>false</Prefer32Bit>
@@ -33,7 +33,7 @@
     <OutputPath>bin\Release</OutputPath>
     <IntermediateOutputPath>obj\Release</IntermediateOutputPath>
     <DocumentationFile>bin\Release\MyDecoders.xml</DocumentationFile>
-    <DefineConstants>PLATFORM_WINDOWS</DefineConstants>
+    <DefineConstants>TRACE;WINDOWS</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <Prefer32Bit>false</Prefer32Bit>
