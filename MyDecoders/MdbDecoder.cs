@@ -436,10 +436,17 @@ namespace LabNation.Decoders
                         if (isAddr) { detail = "Addr"; byteColor = DecoderOutputColor.DarkBlue; }
                         if (isData) { detail = "Data"; byteColor = blockColor; }
                         if (isLastData) { detail = "LastData"; byteColor = DecoderOutputColor.Green; }
-                        if (isChk) { detail = "CHK"; byteColor = chkOk ? DecoderOutputColor.Black : DecoderOutputColor.Red; }
+                        if (isChk) {
+                             detail = "CHK";
+                             byteColor = chkOk ? DecoderOutputColor.Black : DecoderOutputColor.Red;
+                             // Append checksum status directly to the detail string for the CHK byte
+                             detail += chkOk ? " OK" : $" ERR (exp {calculatedChk:X2})";
+                        }
 
-                        // Add Mode bit info to detail
-                        detail += $" M={(currentByte.ModeBit ? 1 : 0)}";
+                        // Add Mode bit info to detail (unless it's CHK, where status was just added)
+                        if (!isChk) {
+                           detail += $" M={(currentByte.ModeBit ? 1 : 0)}";
+                        }
 
                         // Add individual byte value output
                         outputList.Add(new DecoderOutputValueNumeric(
@@ -453,6 +460,7 @@ namespace LabNation.Decoders
                     }
 
                     // Add a separate event for checksum status if checksum was expected
+                    /* // --- REMOVED to prevent overlapping text ---
                     if (checksumExpected)
                     {
                         outputList.Add(new DecoderOutputEvent(
@@ -461,7 +469,10 @@ namespace LabNation.Decoders
                             chkOk ? DecoderOutputColor.Black : DecoderOutputColor.Red,
                             chkOk ? "CHK OK" : $"CHK ERR (exp {calculatedChk:X2})"));
                     }
-                    else if (block.Bytes.Count > 1) // Only mark if it wasn't ACK/NAK
+                    */
+
+                    // --- Keep the 'No CHK?' marker for unexpected block endings ---
+                    if (!checksumExpected && block.Bytes.Count > 1) // Check if checksum was *not* expected and block had >1 byte
                     {
                          // Indicate if checksum wasn't expected or block structure seemed wrong
                          outputList.Add(new DecoderOutputEvent(
