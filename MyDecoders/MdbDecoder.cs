@@ -383,62 +383,77 @@ namespace LabNation.Decoders
 
                     // --- Generate Output Events for the Block ---
                     DecoderOutputColor blockColor = block.IsMasterToPeripheral ? DecoderOutputColor.Blue : DecoderOutputColor.Green;
-                    string directionPrefix = block.IsMasterToPeripheral ? "M->P:" : "P->M:";
-                    StringBuilder blockLabel = new StringBuilder(directionPrefix);
-                    StringBuilder blockTooltip = new StringBuilder();
+                    // We will now output each byte individually
+                    // Remove the old block-level label/tooltip builders
+                    // StringBuilder blockLabel = new StringBuilder(directionPrefix);
+                    // StringBuilder blockTooltip = new StringBuilder();
 
+                    // Keep track of checksum validity
+                    bool chkOk = false;
+                    if (checksumExpected)
+                    {
+                        chkOk = (calculatedChk == potentialChkByte.Value);
+                    }
 
                     for(int i=0; i < block.Bytes.Count; i++)
                     {
                         MdbByte currentByte = block.Bytes[i];
+                        string detail = string.Empty; // Detail string for DecoderOutputValueNumeric
+
+                        // Determine byte type for coloring and detail string
                         bool isAddr = i == 0 && block.IsMasterToPeripheral && currentByte.ModeBit;
-                        bool isLastData = !block.IsMasterToPeripheral && i == dataBytesForChk.Count - 1 && currentByte.ModeBit && checksumExpected;
+                        // Adjust lastDataByteIndex check for robustness
+                        int actualLastDataByteIndex = -1;
+                        if (!block.IsMasterToPeripheral && checksumExpected) {
+                             actualLastDataByteIndex = dataBytesForChk.Count - 1;
+                        }
+                        bool isLastData = !block.IsMasterToPeripheral && i == actualLastDataByteIndex && currentByte.ModeBit;
                         bool isChk = i == block.Bytes.Count - 1 && checksumExpected && !currentByte.ModeBit;
                         bool isData = !isAddr && !isLastData && !isChk;
 
-                        string byteLabel = $" {currentByte.Value:X2}";
-                        string byteTooltip = $"0x{currentByte.Value:X2}";
                         DecoderOutputColor byteColor = blockColor;
 
+                        if (isAddr) { detail = "Addr"; byteColor = DecoderOutputColor.DarkBlue; }
+                        if (isData) { detail = "Data"; byteColor = blockColor; }
+                        if (isLastData) { detail = "LastData"; byteColor = DecoderOutputColor.Green; }
+                        if (isChk) { detail = "CHK"; byteColor = chkOk ? DecoderOutputColor.Black : DecoderOutputColor.Red; }
 
-                        if (isAddr) { byteLabel += "(A)"; byteTooltip += " Addr"; byteColor = DecoderOutputColor.DarkBlue; }
-                        if (isData) { byteTooltip += " Data"; byteColor = blockColor; }
-                        if (isLastData) { byteLabel += "(L)"; byteTooltip += " LastData"; byteColor = block.IsMasterToPeripheral ? blockColor : DecoderOutputColor.Green;} // Mode=1 only for P->M last data - Use Green
-                        if (isChk) { byteLabel += "(C)"; byteTooltip += " CHK"; byteColor = DecoderOutputColor.Black; } // Use Black for Gray
+                        // Add Mode bit info to detail
+                        detail += $" M={(currentByte.ModeBit ? 1 : 0)}";
 
-                        byteTooltip += $" M={(currentByte.ModeBit ? 1:0)}";
-                        blockLabel.Append(byteLabel);
-                        blockTooltip.AppendLine($"[{i}]: {byteTooltip} @{currentByte.StartIndex}");
-
-
-                         // Add individual byte markers (optional, can be noisy)
-                         // outputList.Add(new DecoderOutputEvent(currentByte.StartIndex, currentByte.EndIndex, byteColor, byteLabel.Trim()));
-
+                        // Add individual byte value output
+                        outputList.Add(new DecoderOutputValueNumeric(
+                            currentByte.StartIndex,
+                            currentByte.EndIndex,
+                            byteColor,
+                            currentByte.Value,
+                            detail,
+                            8 // Specify 8 data bits for formatting
+                            ));
                     }
 
-                    // Add Checksum Info
+                    // Add a separate event for checksum status if checksum was expected
                     if (checksumExpected)
                     {
-                        bool chkOk = (calculatedChk == potentialChkByte.Value);
-                        blockLabel.Append($" CHK:{(chkOk ? "OK" : $"ERR (exp {calculatedChk:X2})")}");
-                        blockTooltip.AppendLine($"Checksum: Expected=0x{calculatedChk:X2}, Received=0x{potentialChkByte.Value:X2} -> {(chkOk ? "OK" : "ERROR")}");
-
-                        // Highlight CHK byte based on result
-                         outputList.Add(new DecoderOutputEvent(potentialChkByte.StartIndex, potentialChkByte.EndIndex, chkOk ? DecoderOutputColor.Black: DecoderOutputColor.Red, $"CHK: {potentialChkByte.Value:X2}")); // Use Black for DarkGray
-                    } else {
-                         blockLabel.Append(" (No CHK?)");
-                         blockTooltip.AppendLine("Checksum not expected or block structure invalid.");
-                         // Mark last byte if it wasn't the checksum
-                         if (block.Bytes.Count > 0 && !checksumExpected) {
-                             var lb = block.Bytes.Last();
-                              outputList.Add(new DecoderOutputEvent(lb.StartIndex, lb.EndIndex, DecoderOutputColor.Orange, $"Last: {lb.Value:X2} M={(lb.ModeBit?1:0)}"));
-                         }
+                        outputList.Add(new DecoderOutputEvent(
+                            potentialChkByte.StartIndex, // Span the checksum byte
+                            potentialChkByte.EndIndex,
+                            chkOk ? DecoderOutputColor.Black : DecoderOutputColor.Red,
+                            chkOk ? "CHK OK" : $"CHK ERR (exp {calculatedChk:X2})"));
+                    }
+                    else if (block.Bytes.Count > 1) // Only mark if it wasn't ACK/NAK
+                    {
+                         // Indicate if checksum wasn't expected or block structure seemed wrong
+                         outputList.Add(new DecoderOutputEvent(
+                             block.EndIndex - (block.Bytes.LastOrDefault()?.SampleCount ?? 0), // Span the last byte
+                             block.EndIndex,
+                             DecoderOutputColor.Orange,
+                             "No CHK?"));
                     }
 
-                    // Add overall block representation
-                    // Use ValueNumeric, put block info in detail string
-                    string detail = $"{blockLabel.ToString().Trim()}\n{blockTooltip.ToString()}";
-                    outputList.Add(new DecoderOutputValueNumeric(blockStartIndex, blockEndIndex, blockColor, 0, detail, 0));
+                    // Remove the old overall block representation
+                    // string detail = $"{blockLabel.ToString().Trim()}\n{blockTooltip.ToString()}";
+                    // outputList.Add(new DecoderOutputValueNumeric(blockStartIndex, blockEndIndex, blockColor, 0, detail, 0));
 
                 } else if (block.Bytes.Count == 1 && !firstByte.ModeBit) {
                      // Single byte with Mode=0 - likely invalid/noise
