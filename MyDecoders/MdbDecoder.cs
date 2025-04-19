@@ -1,7 +1,7 @@
 ///////////////////
 //
-//  MDB decoder by Blaise Barrette
-//  https://github.com/BlaiseBarrette/MDB-Decoder
+//  UART/RS232 decoder by Robert44
+//  https://github.com/robert44/decoders
 //
 
 namespace LabNation.Decoders
@@ -9,336 +9,376 @@ namespace LabNation.Decoders
     using System;
     using System.Collections.Generic;
     using System.ComponentModel.Composition;
+    using System.Diagnostics;
     using System.Linq;
-    using LabNation.Interfaces;
-    using System.Text; // Added for StringBuilder
+    using System.Text;
 
-    [Export(typeof(IDecoder))]
-    public class DecoderMDB : IDecoder
+    using LabNation.Interfaces;
+
+    /// <summary>
+    /// The serial.
+    /// </summary>
+    [Export(typeof(IProcessor))]
+    public class DecoderUART : IDecoder
     {
+        /// <summary>
+        /// Gets the description.
+        /// </summary>
         public DecoderDescription Description
         {
             get
             {
-                return new DecoderDescription()
+                return new DecoderDescription
                 {
-                    Name = "MDB Decoder",
-                    ShortName = "MDB",
-                    Author = "Blaise", // Votre nom ici !
+                    Name = "UART/RS232 decoder",
+                    ShortName = "UART",
+                    Author = "robert44, sismoke",
                     VersionMajor = 0,
-                    VersionMinor = 2, // Incremented version
-                    Description = "Decodes the Multi-Drop Bus (MDB/ICP) protocol, commonly used in vending machines.",
-                    InputWaveformTypes = new Dictionary<string, Type>()
+                    VersionMinor = 1,
+                    Description = "Serial decoder for UART and RS232 protocols",
+                    InputWaveformTypes = new Dictionary<string, Type> { { "Input", typeof(bool) } },
+                    Parameters = new DecoderParameter[]
                     {
-                        { "MDB Line", typeof(bool)} // Unique ligne de données MDB
-                    },
-                    Parameters = null // Pas de paramètres pour l'instant
+                        new DecoderParameterStrings(
+                            "Baud",
+                            new[] {
+                                "Auto",
+                                "75", "110", "300", "1200", "2400", "4800", "9600",
+                                "14400", "19200", "28800", "38400", "57600", "115200"
+                            },
+                            "Auto",
+                            "Bits per second (baudrate)."
+                            ),
+                        new DecoderParameterInts("Bits", new[] { 5, 6, 7, 8, 9 }, "Databits", 8, "Data bits."),
+                        new DecoderParameterStrings("Par", new[] { "None", "Odd", "Even", "Mark", "Space" }, "None", "Parity."),
+                        new DecoderParameterInts("Stopbits", new[] { 1, 2 }, "Stopbits", 1, "stop bit setting."),
+                        new DecoderParameterStrings("Mode", new[] { "UART", "RS232" }, "UART", "Select if the signal needs to be inverted.")
+                    }
                 };
             }
         }
 
-        // Constantes MDB
-        private const double BAUD_RATE = 9600.0;
-        private const double BIT_DURATION_SECONDS = 1.0 / BAUD_RATE;
-        private const int SAMPLES_PER_BIT = 10; // Minimum samples to check within a bit time for stability
-        private const double START_BIT_CHECK_DURATION_FACTOR = 0.4; // Check start bit stability for 40% of bit duration
-        private const double SAMPLE_POINT_FACTOR = 0.5; // Sample data bits at 50% of their duration
-        private const double MAX_INTERBYTE_TIME_SECONDS = 0.001; // 1 ms - Max time between bytes within a block
-
-        // Special MDB Bytes
-        private const byte MDB_ACK = 0x00;
-        private const byte MDB_NAK = 0xFF;
-
-        // Adresses MDB connues (à compléter si nécessaire)
-        private enum MdbAddress : byte
+        /// <summary>
+        /// The decoding method.
+        /// </summary>
+        /// <param name="inputWaveforms"> The input waveforms. </param>
+        /// <param name="parameters"> The parameters. </param>
+        /// <param name="samplePeriod"> The sample period. </param>
+        /// <returns> The output returned to the scope. </returns>
+        public DecoderOutput[] Process(Dictionary<string, Array> inputWaveforms, Dictionary<string, object> parameters, double samplePeriod)
         {
-            VMC = 0x00,             // Master
-            Changer = 0x08,
-            Cashless1 = 0x10,
-            Gateway = 0x18,
-            BillValidator = 0x30,
-            Cashless2 = 0x60,
-            Experimental1 = 0xE0,
-            Experimental2 = 0xE8,
-            Specific1 = 0xF0,
-            Specific2 = 0xF8,
-        }
-
-        // Structure pour stocker le résultat de la lecture d'une trame
-        private struct MdbFrame
-        {
-            public byte Data;
-            public bool ModeBit;
-            public int StartIndex;
-            public int EndIndex;
-            public bool FramingError;
-            public bool StartBitGlitch; // Flag if start bit was noisy
-        }
-
-        // Renamed from Decode to Process to match IDecoder interface
-        DecoderOutput[] IDecoder.Process(Dictionary<string, Array> inputWaveforms, Dictionary<string, object> parameters, double samplePeriod) 
-        {
-            if (!inputWaveforms.ContainsKey("MDB Line") || !(inputWaveforms["MDB Line"] is bool[]))
-                throw new ArgumentException("Input 'MDB Line' of type bool[] is required.");
-
-            bool[] mdbLine = (bool[])inputWaveforms["MDB Line"];
-            List<DecoderOutput> outputList = new List<DecoderOutput>();
-            int currentIndex = 0;
-            int samplesPerBitPeriod = (int)Math.Max(1, Math.Round(BIT_DURATION_SECONDS / samplePeriod)); // Samples in one bit time
-            double maxInterByteSamples = MAX_INTERBYTE_TIME_SECONDS / samplePeriod;
-
-            List<MdbFrame> decodedFrames = new List<MdbFrame>(); // Store frames before processing blocks
-
-            // --- Step 1: Decode individual frames --- 
-            while (currentIndex < mdbLine.Length - samplesPerBitPeriod * 11) // Ensure enough data for a full frame
-            {
-                int startBitIndex = FindNextStableFallingEdge(mdbLine, currentIndex, samplesPerBitPeriod);
-                if (startBitIndex < 0) break; // No more stable start bits found
-
-                MdbFrame frame = TryReadMdbFrame(mdbLine, startBitIndex, samplePeriod, samplesPerBitPeriod);
-
-                if (frame.FramingError)
-                {
-                    outputList.Add(new DecoderOutputEvent(startBitIndex, frame.EndIndex > startBitIndex ? frame.EndIndex : startBitIndex + samplesPerBitPeriod, DecoderOutputColor.Red, "Framing Err"));
-                    currentIndex = startBitIndex + 1; 
-                }
-                else
-                {
-                    if (frame.StartBitGlitch)
-                    {
-                        outputList.Add(new DecoderOutputEvent(startBitIndex, frame.EndIndex, DecoderOutputColor.Orange, "Glitch?"));
-                    }
-                    decodedFrames.Add(frame);
-                    currentIndex = frame.EndIndex; 
-                }
-            }
-
-            // --- Step 2: Process decoded frames into blocks --- 
-            ProcessDecodedFrames(decodedFrames, outputList, samplePeriod, maxInterByteSamples);
-
-            return outputList.ToArray();
-        }
-
-        // Cherche une transition H->L stable (reste L pendant une partie du bit)
-        private int FindNextStableFallingEdge(bool[] data, int startIndex, int samplesPerBit)
-        {
-            int checkSamples = (int)Math.Max(1, samplesPerBit * START_BIT_CHECK_DURATION_FACTOR);
-
-            for (int i = startIndex; i < data.Length - samplesPerBit; i++) // Need at least one bit duration after edge
-            {
-                if (data[i] && !data[i + 1])
-                {
-                    int potentialStart = i + 1;
-                    bool stable = true;
-                    for (int k = 1; k < checkSamples && potentialStart + k < data.Length; k++)
-                    {
-                        if (data[potentialStart + k])
-                        {
-                            stable = false;
-                            i = potentialStart + k -1;
-                            break;
-                        }
-                    }
-                    if (stable) return potentialStart;
-                }
-            }
-            return -1; // Not found
-        }
-
-        // Tente de lire une trame MDB de 11 bits
-        private MdbFrame TryReadMdbFrame(bool[] data, int startBitIndex, double samplePeriod, int samplesPerBit)
-        {
-            MdbFrame result = new MdbFrame { StartIndex = startBitIndex, EndIndex = startBitIndex, FramingError = true, StartBitGlitch = false };
-            int samplePointOffset = (int)Math.Max(1, samplesPerBit * SAMPLE_POINT_FACTOR); // Sample point within the bit
-
-            for(int i = 1; i < samplesPerBit; i++)
-            {
-                if (startBitIndex + i >= data.Length || data[startBitIndex + i])
-                {
-                    result.StartBitGlitch = true; 
-                }
-            }
-
-            byte dataByte = 0;
-            bool modeBit = false;
-            bool stopBit = false;
-            result.EndIndex = startBitIndex + 11 * samplesPerBit;
-
-            if (result.EndIndex >= data.Length)
-            {
-                 result.EndIndex = data.Length -1;
-                 return result; // Not enough data
-            }
+            var decoderOutputList = new List<DecoderOutput>();
 
             try
             {
-                for (int bit = 0; bit < 8; bit++)
+                //// Get samples.
+                var serialData = (bool[])inputWaveforms["Input"];
+
+                //// Fetch parameters.
+                int selectedBaudrate = 0;
+                var selectedBaudrateStr = (string)parameters["Baud"];
+                if (selectedBaudrateStr != "Auto")
                 {
-                    int sampleIndex = startBitIndex + (bit + 1) * samplesPerBit + samplePointOffset;
-                    if (data[sampleIndex]) dataByte |= (byte)(1 << bit);
+                    int.TryParse(selectedBaudrateStr, out selectedBaudrate);
                 }
-                int modeBitSampleIndex = startBitIndex + 9 * samplesPerBit + samplePointOffset;
-                modeBit = data[modeBitSampleIndex];
 
-                int stopBitSampleIndex = startBitIndex + 10 * samplesPerBit + samplePointOffset;
-                stopBit = data[stopBitSampleIndex]; 
+                var selectedDatabits = (int)parameters["Bits"];
+                var selectedStopbits = (int)parameters["Stopbits"];
+                var selectedMode = (string)parameters["Mode"];
+                bool inverted = selectedMode == "UART";
+
+                int parityLength;
+                Parity parity;
+                switch ((string)parameters["Par"])
+                {
+                    case "Odd":
+                        parity = Parity.Odd;
+                        parityLength = 1;
+                        break;
+                    case "Even":
+                        parity = Parity.Even;
+                        parityLength = 1;
+                        break;
+                    case "Mark":
+                        parity = Parity.Mark;
+                        parityLength = 1;
+                        break;
+                    case "Space":
+                        parity = Parity.Space;
+                        parityLength = 1;
+                        break;
+                    default:
+                        parity = Parity.None;
+                        parityLength = 0;
+                        break;
+                }
+
+                int frameLength = 1 + selectedDatabits + parityLength + selectedStopbits;
+
+                var bits = new List<Bit>();
+                int lastIndex = 0;
+
+                for (int i = 1; i < serialData.Length; i++)
+                {
+                    if (serialData[i] != serialData[i - 1])
+                    {
+                        bits.Add(new Bit(lastIndex, i - lastIndex, serialData[i - 1] == inverted));
+                        lastIndex = i;
+                    }
+                }
+                bits.Add(new Bit(lastIndex, serialData.Length - lastIndex - 1, serialData.Last() == inverted));
+
+                //// Get bit length from the smallest bit.
+                int minimumBitlength;
+                if (selectedBaudrate == 0)
+                {
+                    var bitlengths = from bit in bits group bit by bit.Length into g where g.Count() > 1 select new { Length = g.Key, Count = g.Count() };
+                    minimumBitlength = int.MaxValue;
+                    foreach (var bitLength in bitlengths)
+                    {
+                        if (minimumBitlength > bitLength.Length)
+                        {
+                            minimumBitlength = bitLength.Length;
+                        }
+                    }
+
+                    if ((int.MaxValue - minimumBitlength) < 0.1)
+                    {
+                        // possible show error in detecting baudrate.
+                        return decoderOutputList.ToArray();
+                    }
+                }
+                else
+                {
+                    minimumBitlength = (int)(1 / (samplePeriod * selectedBaudrate));
+                }
+
+                var resultBits = new List<Bit>();
+                int indexstep = minimumBitlength;
+                var bitstring = new StringBuilder();
+
+                foreach (Bit bit in bits)
+                {
+                    var count = (bit.Length + (minimumBitlength / 2))/ minimumBitlength;
+                    int indexOffset = bit.Index;
+                    for (var i = 0; i < count; i++)
+                    {
+                        resultBits.Add(new Bit(indexOffset, indexstep, bit.Value));
+                        bitstring.Append(bit.Value ? "1" : "0");
+                        indexOffset += indexstep;
+                    }
+                }
+
+                if (bitstring.Length < frameLength)
+                {
+                    // possible show error no data.
+                    return decoderOutputList.ToArray();
+                }
+
+                var bitstream = bitstring.ToString();
+
+                int bestOffset = 0;
+                int maxCount = 0;
+
+                // Find the offset that gives the most frames.
+                for (int offset = 1; offset < bitstream.Length / 4; offset++)
+                {
+                    int cntFrames = 0;
+                    for (int i = offset; i < bitstream.Length; i += frameLength)
+                    {
+                        if (i + selectedDatabits + parityLength + selectedStopbits < bitstream.Length)
+                        {
+                            // Find start and stop bit.
+                            if (bitstream[i - 1] == '1' && bitstream[i] == '0' && bitstream[i + selectedDatabits + parityLength + selectedStopbits] == '1')
+                            {
+                                cntFrames++;
+                            }
+                        }
+                    }
+
+                    if (cntFrames > maxCount)
+                    {
+                        maxCount = cntFrames;
+                        bestOffset = offset;
+                    }
+                }
+
+                int stepSize = frameLength;
+                for (int i = bestOffset; i < bitstream.Length - frameLength; i += stepSize)
+                {
+                    // Find start and stop bit.
+                    if (bitstream[i - 1] == '1' && bitstream[i] == '0' && bitstream[i + selectedDatabits + parityLength + selectedStopbits] == '1')
+                    {
+                        if ((selectedStopbits == 1) | ((selectedStopbits == 2) && bitstream[i + selectedDatabits + parityLength + 1] == '1'))
+                        {
+                            stepSize = frameLength;
+                            var databitsStr = bitstream.Substring(i + 1, selectedDatabits);
+
+                            bool parityOk = true;
+                            char parityBit = ' ';
+                            if (parity != Parity.None)
+                            {
+                                int oneCount;
+                                parityBit = bitstream[i + selectedDatabits + 1];
+                                switch (parity)
+                                {
+                                    case Parity.Odd:
+                                        oneCount = databitsStr.Count(x => x == '1');
+                                        if (parityBit == '1')
+                                        {
+                                            oneCount++;
+                                        }
+
+                                        if (oneCount % 2 == 0)
+                                        {
+                                            parityOk = false;
+                                        }
+
+                                        break;
+                                    case Parity.Even:
+                                        oneCount = databitsStr.Count(x => x == '1');
+                                        if (parityBit == '1')
+                                        {
+                                            oneCount++;
+                                        }
+
+                                        if (oneCount % 2 == 1)
+                                        {
+                                            parityOk = false;
+                                        }
+
+                                        break;
+                                    case Parity.Mark:
+                                        if (parityBit != '1')
+                                        {
+                                            parityOk = false;
+                                        }
+
+                                        break;
+                                    case Parity.Space:
+                                        if (parityBit != '0')
+                                        {
+                                            parityOk = false;
+                                        }
+
+                                        break;
+                                }
+                            }
+
+                            var databits = databitsStr.ToCharArray();
+                            Array.Reverse(databits);
+                            Int16 data = Convert.ToInt16(new string(databits), 2);
+                            decoderOutputList.Add(
+                                new DecoderOutputEvent(
+                                    resultBits[i].Index,
+                                    resultBits[i].Index + indexstep,
+                                    DecoderOutputColor.Orange,
+                                    "START"
+                                    ));
+                            decoderOutputList.Add(
+                                new DecoderOutputValueNumeric(
+                                    resultBits[i].Index + indexstep,
+                                    resultBits[i].Index + (indexstep * (selectedDatabits + 1)),
+                                    DecoderOutputColor.Green,
+                                    data,
+                                    string.Empty,
+                                    selectedDatabits
+                                    ));
+                            int offset = 1;
+                            if (parity != Parity.None)
+                            {
+                                string par = string.Format("P:{0}", parityBit);
+                                decoderOutputList.Add(
+                                    new DecoderOutputEvent(
+                                        resultBits[i].Index + (indexstep * (selectedDatabits + 1)),
+                                        resultBits[i].Index + (indexstep * (selectedDatabits + 2)),
+                                        parityOk ? DecoderOutputColor.DarkBlue : DecoderOutputColor.Red,
+                                        par
+                                        ));
+                                offset++;
+                            }
+
+                            decoderOutputList.Add(
+                                new DecoderOutputEvent(
+                                    resultBits[i].Index + (indexstep * (selectedDatabits + offset)),
+                                    resultBits[i].Index + (indexstep * (selectedDatabits + 1 + offset)),
+                                    DecoderOutputColor.Blue,
+                                    "STOP"
+                                    ));
+                        }
+                    }
+                    else
+                    {
+                        stepSize = 1;
+                    }
+                }
+
+                double baudrate = 1.0 / (minimumBitlength / 1000.0);
+                Debug.WriteLine("Detected: {0} baud.", (int)baudrate);
             }
-            catch (IndexOutOfRangeException) { return result; }
+            catch (Exception e)
+            {
+                Debug.WriteLine(e);
+            }
 
-            if (!stopBit) return result; // Framing error - Stop bit is Low
-            
-            result.Data = dataByte;
-            result.ModeBit = modeBit;
-            result.FramingError = false; // Success!
-            return result;
+            return decoderOutputList.ToArray();
         }
 
-        // Calcule le checksum MDB pour une liste de trames
-        private byte CalculateChecksum(List<MdbFrame> blockFrames)
+        /// <summary>
+        /// The parity.
+        /// </summary>
+        private enum Parity
         {
-            byte checksum = 0;
-            foreach (var frame in blockFrames)
-            {
-                checksum += frame.Data;
-            }
-            return checksum;
+            None,
+            Odd,
+            Even,
+            Mark,
+            Space
         }
-
-        // Assemble les trames en blocs et génère les DecoderOutputs
-        private void ProcessDecodedFrames(List<MdbFrame> frames, List<DecoderOutput> outputList, double samplePeriod, double maxInterByteSamples)
+        
+        /// <summary>
+        /// The bit.
+        /// </summary>
+        private class Bit
         {
-            if (frames.Count == 0) return;
-
-            List<MdbFrame> currentBlock = new List<MdbFrame>();
-            int lastFrameEndIndex = 0;
-
-            for (int i = 0; i < frames.Count; i++)
+            /// <summary>
+            /// Initializes a new instance of the <see cref="Bit"/> class.
+            /// </summary>
+            /// <param name="index"> The index. </param>
+            /// <param name="length"> The length. </param>
+            /// <param name="val"> The val. </param>
+            public Bit(int index, int length, bool val)
             {
-                MdbFrame currentFrame = frames[i];
+                this.Index = index;
+                this.Value = val;
+                this.Length = length;
+            }
 
-                // Vérifier le timing inter-octets (si on est déjà dans un bloc)
-                if (currentBlock.Count > 0)
-                {
-                    double samplesBetweenFrames = currentFrame.StartIndex - lastFrameEndIndex;
-                    if (samplesBetweenFrames > maxInterByteSamples)
-                    {
-                        // Timeout inter-octets: le bloc précédent est invalide/interrompu
-                        if (currentBlock.Count > 0)
-                        {
-                             outputList.Add(new DecoderOutputEvent(currentBlock.First().StartIndex, lastFrameEndIndex, DecoderOutputColor.Orange, "Block Timeout?"));
-                             currentBlock.Clear();
-                        }
-                    }
-                }
+            /// <summary>
+            /// Gets the index.
+            /// </summary>
+            public int Index { get; private set; }
 
-                // Logique d'assemblage des blocs
-                if (currentBlock.Count == 0) // Début d'un potentiel nouveau bloc/ACK/NAK
-                {
-                    if (currentFrame.ModeBit) // Mode=1: Peut être Adresse (Master) ou ACK/NAK/CHK (Slave)
-                    {
-                        if (currentFrame.Data == MDB_ACK) // C'est un ACK seul
-                        {
-                             outputList.Add(new DecoderOutputEvent(currentFrame.StartIndex, currentFrame.EndIndex, DecoderOutputColor.Green, "ACK"));
-                             // Ne pas démarrer de bloc
-                        }
-                        else if (currentFrame.Data == MDB_NAK) // C'est un NAK seul
-                        {
-                             outputList.Add(new DecoderOutputEvent(currentFrame.StartIndex, currentFrame.EndIndex, DecoderOutputColor.Red, "NAK"));
-                             // Ne pas démarrer de bloc
-                        }
-                        else // C'est un octet d'Adresse (début de bloc Maître)
-                        {
-                            currentBlock.Add(currentFrame);
-                        }
-                    }
-                    else // Mode=0: Ne peut être que le début d'un bloc de données Esclave (rare, mais possible si on rate le début)
-                    {
-                        currentBlock.Add(currentFrame); // Suppose début de bloc Esclave
-                    }
-                }
-                else // Dans un bloc existant
-                {
-                    byte expectedChecksum = 0;
-                    bool checksumOk = false;
-                    bool blockComplete = false;
-                    bool isMasterBlock = currentBlock[0].ModeBit; // Le premier octet détermine si c'est un bloc Maître
+            /// <summary>
+            /// Gets the value.
+            /// </summary>
+            public bool Value { get; private set; }
 
-                    if (isMasterBlock)
-                    {
-                        // Bloc Maître: Se termine par un CHK (Mode=0)
-                        if (!currentFrame.ModeBit) // Mode=0 -> C'est le CHK
-                        {
-                            currentBlock.Add(currentFrame); // Ajoute le CHK au bloc
-                            expectedChecksum = CalculateChecksum(currentBlock.GetRange(0, currentBlock.Count - 1)); // Checksum sur Adresse + Données
-                            checksumOk = (currentFrame.Data == expectedChecksum);
-                            blockComplete = true;
+            /// <summary>
+            /// Gets the length.
+            /// </summary>
+            public int Length { get; private set; }
 
-                            string dataStr = string.Join(" ", currentBlock.GetRange(1, currentBlock.Count - 2).Select(f => $"0x{f.Data:X2}"));
-                            string title = $"Master Block [Addr: 0x{currentBlock[0].Data:X2}] Data: {dataStr} CHK: 0x{currentFrame.Data:X2}";
-                            outputList.Add(new DecoderOutputEvent(currentBlock.First().StartIndex, currentFrame.EndIndex,
-                                                                checksumOk ? DecoderOutputColor.Blue : DecoderOutputColor.Red,
-                                                                checksumOk ? title : title + " (Error! Expected: 0x" + expectedChecksum.ToString("X2") + ")"));
-                        }
-                        else // Mode=1 -> Erreur de protocole, on attendait Mode=0 (Data ou CHK)
-                        {
-                             outputList.Add(new DecoderOutputEvent(currentBlock.First().StartIndex, currentFrame.EndIndex, DecoderOutputColor.Red, "Protocol Error (Master Block: Expected Mode=0)"));
-                             blockComplete = true; // Abandonne le bloc actuel
-                        }
-                    }
-                    else // Bloc Esclave en cours (commencé par Mode=0)
-                    {
-                        // Bloc Esclave: Se termine par un octet avec Mode=1 (ACK, NAK, ou CHK)
-                        if (currentFrame.ModeBit) // Mode=1 -> Fin de bloc Esclave
-                        {
-                             blockComplete = true;
-                             if (currentFrame.Data == MDB_ACK) // Fin par ACK
-                             {
-                                 // Ne devrait pas arriver si le bloc a des données, ACK est seul
-                                 outputList.Add(new DecoderOutputEvent(currentBlock.First().StartIndex, currentFrame.EndIndex, DecoderOutputColor.Orange, "Slave Data followed by ACK?"));
-                             }
-                             else if (currentFrame.Data == MDB_NAK) // Fin par NAK
-                             {
-                                 // Ne devrait pas arriver si le bloc a des données, NAK est seul
-                                  outputList.Add(new DecoderOutputEvent(currentBlock.First().StartIndex, currentFrame.EndIndex, DecoderOutputColor.Orange, "Slave Data followed by NAK?"));
-                             }
-                             else // Fin par CHK (Mode=1)
-                             {
-                                currentBlock.Add(currentFrame); // Ajoute le CHK
-                                expectedChecksum = CalculateChecksum(currentBlock.GetRange(0, currentBlock.Count - 1)); // Checksum sur toutes les données précédentes
-                                checksumOk = (currentFrame.Data == expectedChecksum);
-
-                                string dataStr = string.Join(" ", currentBlock.GetRange(0, currentBlock.Count - 1).Select(f => $"0x{f.Data:X2}"));
-                                string title = $"Slave Block Data: {dataStr} CHK: 0x{currentFrame.Data:X2}";
-                                outputList.Add(new DecoderOutputEvent(currentBlock.First().StartIndex, currentFrame.EndIndex,
-                                                                    checksumOk ? DecoderOutputColor.Green : DecoderOutputColor.Red,
-                                                                    checksumOk ? title : title + " (Error! Expected: 0x" + expectedChecksum.ToString("X2") + ")"));
-                             }
-                        }
-                        else // Mode=0 -> Octet de données Esclave supplémentaire
-                        {
-                             currentBlock.Add(currentFrame);
-                             // Reste dans l'état ReceivingSlaveBlock
-                        }
-                    }
-
-                    if (blockComplete)
-                    {
-                         currentBlock.Clear(); // Prêt pour le prochain bloc
-                    }
-                }
-
-                lastFrameEndIndex = currentFrame.EndIndex;
-            } // Fin de la boucle for
-
-            // Gérer un bloc potentiellement incomplet à la fin
-            if (currentBlock.Count > 0)
+            /// <summary>
+            /// The to string.
+            /// </summary>
+            /// <returns>
+            /// The <see cref="string"/>.
+            /// </returns>
+            public override string ToString()
             {
-                 outputList.Add(new DecoderOutputEvent(currentBlock.First().StartIndex, lastFrameEndIndex, DecoderOutputColor.Orange, "Incomplete Block?"));
+                return string.Format("{0},{1},{2}", this.Index, this.Length, this.Value);
             }
         }
-
-        // TODO: Ajouter d'autres fonctions helper pour :
-        // - Interpréter les commandes MDB spécifiques (Changer, Bill Validator, etc.)
-        // - Formater les sorties pour l'affichage
     }
 }
