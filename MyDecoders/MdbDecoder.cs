@@ -30,7 +30,7 @@ namespace LabNation.Decoders
             {
                 return new DecoderDescription
                 {
-                    Name = "UART/RS232 decoder",
+                    Name = "Penis, plote",
                     ShortName = "UART",
                     Author = "robert44, sismoke",
                     VersionMajor = 0,
