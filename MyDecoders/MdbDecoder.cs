@@ -145,20 +145,29 @@ namespace LabNation.Decoders
                         modeBit = (serialData[modeBitSampleIndex] != startBitValue);
 
                         // Check Stop Bit (should be Idle High)
-                        // Check around the expected stop bit position for robustness
+                        // --- Simpler Check: Sample only the center point --- 
+                        int stopBitSampleIndex = frameStartIndex + samplePointOffset + (10 * samplesPerBit);
+                        stopBitOk = false; // Assume error until proven otherwise
+                        if (stopBitSampleIndex >= 0 && stopBitSampleIndex < serialData.Length)
+                        {
+                             stopBitOk = (serialData[stopBitSampleIndex] == idleState);
+                        }
+                        // --- End Simpler Check ---
+
+                        /* --- Original Robustness Check (Commented Out) ---
                         bool foundStopBit = false;
                         for (int offset = -samplesPerBit / 4; offset <= samplesPerBit / 4; offset++)
                         {
-                           int stopBitSampleIndex = frameStartIndex + samplePointOffset + (10 * samplesPerBit) + offset;
-                           if (stopBitSampleIndex >= 0 && stopBitSampleIndex < serialData.Length) {
-                               if (serialData[stopBitSampleIndex] == idleState) {
+                           int checkIdx = frameStartIndex + samplePointOffset + (10 * samplesPerBit) + offset;
+                           if (checkIdx >= 0 && checkIdx < serialData.Length) {
+                               if (serialData[checkIdx] == idleState) {
                                    foundStopBit = true;
                                    break;
                                }
                            }
                         }
                         stopBitOk = foundStopBit;
-
+                        */
 
                         if (stopBitOk)
                         {
