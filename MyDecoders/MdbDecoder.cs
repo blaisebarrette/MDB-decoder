@@ -203,7 +203,6 @@ namespace LabNation.Decoders
                     {
                        // Removed UART specific parameters like Baud, Bits, Parity, Stopbits, Mode
                        new DecoderParameterStrings("TargetDeviceType", new string[] {"All", "Changer", "Validator", "Cashless1", "Cashless2", "Gateway", "USD", "Dispenser"}, "All", "Target Device Type: Filter output based on device type"),
-                       new DecoderParameterStrings("TargetDeviceAddress", null, "", "Target Address (Hex): Filter by specific device address (e.g., 08, 30, 10). Leave empty for no filter."), // Using null for possibleValues to hopefully get a text input
                        new DecoderParameterStrings("AssumeChangerLevel", new string[] {"Auto", "2", "3"}, "Auto", "Assume Changer Level: Assumed level if SETUP response missing"),
                        new DecoderParameterStrings("AssumeValidatorLevel", new string[] {"Auto", "1", "2"}, "Auto", "Assume Validator Level: Assumed level if SETUP response missing"),
                        new DecoderParameterStrings("AssumeCashlessLevel", new string[] {"Auto", "1", "2", "3"}, "Auto", "Assume Cashless Level: Assumed level if SETUP response missing"),
