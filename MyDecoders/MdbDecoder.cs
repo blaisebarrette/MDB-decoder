@@ -21,166 +21,6 @@ namespace LabNation.Decoders
     [Export(typeof(IProcessor))]
     public class DecoderMDB : IDecoder
     {
-        // ---- Command Dictionaries ----
-
-        private static readonly Dictionary<byte, string> VmcCommands = new Dictionary<byte, string>
-        {
-            // Common Commands (extract command bits: value & 0x07)
-            // Note: Specific peripheral sections define which commands apply
-            { 0x00, "RESET" },       // e.g., 0x08, 0x10, 0x30, etc.
-            { 0x01, "SETUP" },       // e.g., 0x09, 0x11, 0x31, etc.
-            { 0x02, "POLL" },        // e.g., 0x0B, 0x13, 0x33, etc. (Changer/Validator specific address)
-            // 0x03, 0x04, 0x05, 0x06 specific to peripheral
-            { 0x07, "EXPANSION" }    // e.g., 0x0F, 0x17, 0x37, etc.
-        };
-
-        private static readonly Dictionary<byte, string> ChangerCommands = new Dictionary<byte, string>
-        {
-            { 0x00, "RESET" },       // 0x08
-            { 0x01, "SETUP" },       // 0x09
-            { 0x02, "TUBE STATUS" }, // 0x0A
-            { 0x03, "POLL" },        // 0x0B
-            { 0x04, "COIN TYPE" },   // 0x0C
-            { 0x05, "DISPENSE" },    // 0x0D
-            // 0x06 is unused
-            { 0x07, "EXPANSION" }    // 0x0F
-        };
-
-        private static readonly Dictionary<byte, string> ValidatorCommands = new Dictionary<byte, string>
-        {
-            { 0x00, "RESET" },       // 0x30
-            { 0x01, "SETUP" },       // 0x31
-            { 0x02, "SECURITY" },    // 0x32
-            { 0x03, "POLL" },        // 0x33
-            { 0x04, "BILL TYPE" },   // 0x34
-            { 0x05, "ESCROW" },      // 0x35
-            { 0x06, "STACKER" },     // 0x36
-            { 0x07, "EXPANSION" }    // 0x37
-        };
-         private static readonly Dictionary<byte, string> Cashless1Commands = new Dictionary<byte, string>
-        {
-            // These map the *full* address byte for Cashless #1 (0x10-0x17)
-            { 0x10, "RESET" },
-            { 0x11, "SETUP" },       // Subcommand follows in data byte
-            { 0x12, "POLL" },
-            { 0x13, "VEND" },        // Subcommand follows in data byte
-            { 0x14, "READER" },      // Subcommand follows in data byte
-            { 0x15, "REVALUE" },     // Subcommand follows in data byte
-            { 0x16, "READER CANCEL" }, // Renamed from UNUSED based on user list
-            { 0x17, "EXPANSION" }    // Subcommand follows in data byte
-        };
-         // Dictionary for Cashless #2 (0x60-0x67) - Assuming same commands for now
-         private static readonly Dictionary<byte, string> Cashless2Commands = new Dictionary<byte, string>
-        {
-            { 0x60, "RESET" },
-            { 0x61, "SETUP" },
-            { 0x62, "POLL" },
-            { 0x63, "VEND" },
-            { 0x64, "READER" },
-            { 0x65, "REVALUE" },
-            { 0x66, "READER CANCEL" },
-            { 0x67, "EXPANSION" }
-        };
-
-        // Add other peripheral command dictionaries as needed (Gateway, USD, etc.)
-
-         // --- Subcommand Dictionaries ---
-
-         private static readonly Dictionary<byte, string> CashlessSetupSubCommands = new Dictionary<byte, string>
-        {
-             { 0x00, "CONFIG DATA" },
-             { 0x01, "MAX/MIN PRICES" }
-        };
-         private static readonly Dictionary<byte, string> CashlessVendSubCommands = new Dictionary<byte, string>
-        {
-             { 0x00, "VEND REQUEST" }, // Note: User list showed 0x01, but doc Section 7.4.5 shows 0x00
-             { 0x01, "VEND CANCEL" }, // Doc Section 7.4.6
-             { 0x02, "VEND SUCCESS" }, // Doc Section 7.4.7
-             { 0x03, "VEND FAILURE" }, // Doc Section 7.4.8
-             { 0x04, "SESSION COMPLETE" }, // Doc Section 7.4.9
-             { 0x05, "CASH SALE" } // Doc Section 7.4.10
-             // Note: MDB 4.3 adds Item Number info to SUCCESS and CASH SALE
-        };
-         private static readonly Dictionary<byte, string> CashlessReaderSubCommands = new Dictionary<byte, string>
-        {
-             { 0x00, "READER DISABLE" }, // Doc Section 7.4.13
-             { 0x01, "READER ENABLE" } // Doc Section 7.4.12
-             // CANCEL is 0x16 command, not a subcommand of 0x14
-        };
-         private static readonly Dictionary<byte, string> CashlessRevalueSubCommands = new Dictionary<byte, string>
-        {
-             { 0x00, "REVALUE REQUEST" }, // Doc Section 7.4.16
-             { 0x01, "REVALUE LIMIT REQUEST" } // Doc Section 7.4.17
-             // Note: Denied/Approved are Reader *Responses*, not VMC subcommands
-        };
-
-        private static readonly Dictionary<byte, string> ChangerExpansionSubCommands = new Dictionary<byte, string>
-        {
-            { 0x00, "IDENTIFICATION" },
-            { 0x01, "FEATURE ENABLE" },
-            { 0x02, "PAYOUT" },
-            { 0x03, "PAYOUT STATUS" },
-            { 0x04, "PAYOUT VALUE POLL" },
-            { 0x05, "SEND DIAG STATUS" },
-            { 0x06, "SEND MANUAL FILL REPORT" },
-            { 0x07, "SEND MANUAL PAYOUT REPORT" },
-            // FTL Commands
-            { 0xFA, "FTL REQ TO RCV" },
-            { 0xFB, "FTL RETRY/DENY" },
-            { 0xFC, "FTL SEND BLOCK" },
-            { 0xFD, "FTL OK TO SEND" },
-            { 0xFE, "FTL REQ TO SEND" },
-            { 0xFF, "DIAGNOSTICS" } // Manufacturer specific
-        };
-
-        private static readonly Dictionary<byte, string> ValidatorExpansionSubCommands = new Dictionary<byte, string>
-        {
-            { 0x00, "IDENTIFICATION" }, // Level 2+ Identification
-            { 0x01, "FEATURE ENABLE" }, // Level 2+ Option Bit Enable
-             // Level 2+ Identification is requested via 0x00
-            // Bill Recycler Commands (Level 2+, Option b1)
-            { 0x03, "RECYCLER SETUP" },
-            { 0x04, "RECYCLER ENABLE" },
-            { 0x05, "BILL DISPENSE STATUS" },
-            { 0x06, "DISPENSE BILL" },
-            { 0x07, "DISPENSE VALUE" },
-            { 0x08, "PAYOUT STATUS" },
-            { 0x09, "PAYOUT VALUE POLL" },
-            { 0x0A, "PAYOUT CANCEL" },
-            // FTL Commands
-            { 0xFA, "FTL REQ TO RCV" },
-            { 0xFB, "FTL RETRY/DENY" },
-            { 0xFC, "FTL SEND BLOCK" },
-            { 0xFD, "FTL OK TO SEND" },
-            { 0xFE, "FTL REQ TO SEND" },
-            { 0xFF, "DIAGNOSTICS" } // Manufacturer specific
-        };
-         private static readonly Dictionary<byte, string> CashlessExpansionSubCommands = new Dictionary<byte, string> // Covers Cashless 1 & 2 Expansion (0x17, 0x67)
-        {
-             { 0x00, "REQUEST ID" }, // Request Peripheral ID
-             { 0x01, "READ USER FILE" }, // Obsolete
-             { 0x02, "WRITE USER FILE" }, // Obsolete
-             { 0x03, "WRITE TIME/DATE" },
-             { 0x04, "DATA ENTRY ENABLE/DISABLE" },
-             { 0x05, "VEND/CASH SALE" },
-             { 0x06, "REVALUE ENABLE/DISABLE" },
-             { 0x07, "READER CONFIG DATA" }, // (MDB 4.3)
-             { 0x08, "DISPLAY REQUEST" }, // (MDB 4.3)
-             { 0x09, "PAYMENT MEDIA ID" }, // (MDB 4.3)
-             { 0x0A, "GET COUPON" }, // (MDB 4.3)
-             { 0x0B, "REMOTE VEND REQUEST" }, // (MDB 4.3)
-             { 0x0C, "ENHANCED ITEM NR INFO" }, // (MDB 4.3)
-             { 0x0D, "MIXED VEND FLAGS" }, // (MDB 4.3 - Part of CASH SALE 0x05) - Placeholder? Doc needs review
-             { 0x10, "ENABLE OPTIONS" }, // (MDB 4.3 - Basket / Partial Refund)
-             // FTL Commands
-             { 0xFA, "FTL REQ TO RCV" },
-             { 0xFB, "FTL RETRY/DENY" },
-             { 0xFC, "FTL SEND BLOCK" },
-             { 0xFD, "FTL OK TO SEND" },
-             { 0xFE, "FTL REQ TO SEND" },
-             // { 0xFF, "DIAGNOSTICS" } // Not explicitly listed for Cashless in Doc Summary, but common pattern
-        };
-
         /// <summary>
         /// Gets the description.
         /// </summary>
@@ -202,11 +42,6 @@ namespace LabNation.Decoders
                     Parameters = new DecoderParameter[]
                     {
                        // Removed UART specific parameters like Baud, Bits, Parity, Stopbits, Mode
-                       new DecoderParameterStrings("TargetDeviceType", new string[] {"All", "Changer", "Validator", "Cashless1", "Cashless2", "Gateway", "USD", "Dispenser"}, "All", "Target Device Type: Filter output based on device type"),
-                       new DecoderParameterStrings("AssumeChangerLevel", new string[] {"Auto", "2", "3"}, "Auto", "Assume Changer Level: Assumed level if SETUP response missing"),
-                       new DecoderParameterStrings("AssumeValidatorLevel", new string[] {"Auto", "1", "2"}, "Auto", "Assume Validator Level: Assumed level if SETUP response missing"),
-                       new DecoderParameterStrings("AssumeCashlessLevel", new string[] {"Auto", "1", "2", "3"}, "Auto", "Assume Cashless Level: Assumed level if SETUP response missing"),
-                       new DecoderParameterStrings("LogLevel", new string[] {"Normal", "Detailed", "Debug"}, "Normal", "Detail Level: Adjust output verbosity")
                     }
                 };
             }
@@ -581,128 +416,33 @@ namespace LabNation.Decoders
                         chkOk = (calculatedChk == potentialChkByte.Value);
                     }
 
-                    string pendingSubCommandName = null; // Store sub-command name for the next byte
-
                     for(int i=0; i < block.Bytes.Count; i++)
                     {
                         MdbByte currentByte = block.Bytes[i];
                         string detail = string.Empty; // Detail string for DecoderOutputValueNumeric
-                        string commandName = null;
 
                         // Determine byte type for coloring and detail string
                         bool isAddr = i == 0 && block.IsMasterToPeripheral && currentByte.ModeBit;
                         // Adjust lastDataByteIndex check for robustness
                         int actualLastDataByteIndex = -1;
                         if (!block.IsMasterToPeripheral && checksumExpected) {
-                             actualLastDataByteIndex = dataBytesForChk.Count - 1; // Index within dataBytesForChk
-                             // Find the corresponding index in the main block.Bytes list
-                             if (actualLastDataByteIndex >= 0 && actualLastDataByteIndex < dataBytesForChk.Count)
-                             {
-                                 MdbByte lastDataByte = dataBytesForChk[actualLastDataByteIndex];
-                                 actualLastDataByteIndex = block.Bytes.IndexOf(lastDataByte);
-                             } else {
-                                 actualLastDataByteIndex = -1; // Reset if not found
-                             }
+                             actualLastDataByteIndex = dataBytesForChk.Count - 1;
                         }
                         bool isLastData = !block.IsMasterToPeripheral && i == actualLastDataByteIndex && currentByte.ModeBit;
                         bool isChk = i == block.Bytes.Count - 1 && checksumExpected && !currentByte.ModeBit;
                         bool isData = !isAddr && !isLastData && !isChk;
-                        bool isExpansionSubCommand = i == 1 && pendingSubCommandName != null && block.IsMasterToPeripheral && !currentByte.ModeBit;
 
                         DecoderOutputColor byteColor = blockColor;
 
-                        if (isAddr) {
-                            byte address = (byte)(currentByte.Value & 0xF8); // Mask out command bits
-                            byte command = (byte)(currentByte.Value & 0x07);
-                            detail = "Addr";
-                            byteColor = DecoderOutputColor.DarkBlue;
-
-                            Dictionary<byte, string> commandDict = null; // Declare here
-                            bool isCashless = (address >= 0x10 && address < 0x18) || (address >= 0x60 && address < 0x68);
-
-                            // --- Command Identification Logic ---
-                            if (isCashless)
-                            {
-                                commandDict = (address >= 0x10 && address < 0x18) ? Cashless1Commands : Cashless2Commands;
-                                if (commandDict.TryGetValue(currentByte.Value, out commandName))
-                                {
-                                    detail += $": {commandName}";
-                                    // Check if this Cashless command expects a subcommand
-                                    bool expectsSubCommand = commandName == "SETUP" || commandName == "VEND" || commandName == "READER" || commandName == "REVALUE" || commandName == "EXPANSION";
-                                    if (expectsSubCommand && block.Bytes.Count > 1)
-                                    {
-                                        byte subCommandByte = block.Bytes[1].Value;
-                                        Dictionary<byte, string> subCommandDict = null;
-                                        if(commandName == "SETUP") subCommandDict = CashlessSetupSubCommands;
-                                        else if(commandName == "VEND") subCommandDict = CashlessVendSubCommands;
-                                        else if(commandName == "READER") subCommandDict = CashlessReaderSubCommands;
-                                        else if(commandName == "REVALUE") subCommandDict = CashlessRevalueSubCommands;
-                                        else if(commandName == "EXPANSION") subCommandDict = CashlessExpansionSubCommands; // Assuming EXPANSION subcommands are consistent
-
-                                        if (subCommandDict != null && subCommandDict.TryGetValue(subCommandByte, out string subName))
-                                        {
-                                            pendingSubCommandName = subName;
-                                        } else {
-                                            pendingSubCommandName = $"SubCmd=0x{subCommandByte:X2}";
-                                        }
-                                    }
-                                }
-                                else
-                                {
-                                     detail += $": ??? (0x{currentByte.Value:X2})"; // Unknown Cashless command byte
-                                }
-                            }
-                            else // Handle other peripherals (Changer, Validator, etc.)
-                            {
-                                // Use the lower 3 bits for command identification
-                                command = (byte)(currentByte.Value & 0x07);
-                                if ((address >= 0x08 && address < 0x10)) commandDict = ChangerCommands;
-                                else if ((address >= 0x30 && address < 0x38)) commandDict = ValidatorCommands;
-                                // Add other peripheral address ranges and dictionaries here...
-
-                                if (commandDict != null && commandDict.TryGetValue(command, out commandName))
-                                {
-                                    detail += $": {commandName}";
-                                    // Check for EXPANSION command (0x07) for non-cashless peripherals
-                                    if (command == 0x07 && block.Bytes.Count > 1)
-                                    {
-                                        byte subCommandByte = block.Bytes[1].Value;
-                                        Dictionary<byte, string> subCommandDict = null;
-                                        if ((address >= 0x08 && address < 0x10)) subCommandDict = ChangerExpansionSubCommands;
-                                        else if ((address >= 0x30 && address < 0x38)) subCommandDict = ValidatorExpansionSubCommands;
-                                        // Add other peripheral EXPANSION subcommand dictionaries here...
-
-                                        if (subCommandDict != null && subCommandDict.TryGetValue(subCommandByte, out string subName))
-                                        {
-                                            pendingSubCommandName = subName;
-                                        } else {
-                                            pendingSubCommandName = $"SubCmd=0x{subCommandByte:X2}";
-                                        }
-                                    }
-                                }
-                                else
-                                {
-                                     detail += $": Cmd=0x{command:X1}"; // Unknown command bits for this peripheral
-                                }
-                            }
-
-                        }
-                        // If this is the data byte immediately following an EXPANSION command, show the sub-command name
-                        else if (i == 1 && pendingSubCommandName != null && block.IsMasterToPeripheral && !currentByte.ModeBit) {
-                            detail = $"Data: {pendingSubCommandName}"; // Display the stored subcommand name
-                            byteColor = DecoderOutputColor.Purple; // Use a distinct color for subcommands
-                            isData = false; // Prevent it from being labeled as generic 'Data'
-                            pendingSubCommandName = null; // Consume the pending name
-                        }
-                        else if (isData) { detail = "Data"; byteColor = blockColor; }
-                        else if (isLastData) { detail = "LastData"; byteColor = DecoderOutputColor.Green; }
-                        else if (isChk) {
+                        if (isAddr) { detail = "Addr"; byteColor = DecoderOutputColor.DarkBlue; }
+                        if (isData) { detail = "Data"; byteColor = blockColor; }
+                        if (isLastData) { detail = "LastData"; byteColor = DecoderOutputColor.Green; }
+                        if (isChk) {
                              detail = "CHK";
                              byteColor = chkOk ? DecoderOutputColor.Black : DecoderOutputColor.Red;
                              // Append checksum status directly to the detail string for the CHK byte
                              detail += chkOk ? " OK" : $" ERR (exp {calculatedChk:X2})";
                         }
-
 
                         // Add Mode bit info to detail (unless it's CHK, where status was just added)
                         if (!isChk) {
