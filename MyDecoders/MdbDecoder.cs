@@ -59,16 +59,60 @@ namespace LabNation.Decoders
         };
          private static readonly Dictionary<byte, string> Cashless1Commands = new Dictionary<byte, string>
         {
-            { 0x00, "RESET" },       // 0x10
-            { 0x01, "SETUP" },       // 0x11
-            { 0x02, "POLL" },        // 0x12 - Note: This is from structure, needs verification in doc
-            { 0x03, "VEND" },        // 0x13
-            { 0x04, "READER" },      // 0x14 - Subcommands: ENABLE/DISABLE/CANCEL
-            { 0x05, "REVALUE" },     // 0x15
-            { 0x06, "UNUSED" },      // 0x16
-            { 0x07, "EXPANSION" }    // 0x17
+            // These map the *full* address byte for Cashless #1 (0x10-0x17)
+            { 0x10, "RESET" },
+            { 0x11, "SETUP" },       // Subcommand follows in data byte
+            { 0x12, "POLL" },
+            { 0x13, "VEND" },        // Subcommand follows in data byte
+            { 0x14, "READER" },      // Subcommand follows in data byte
+            { 0x15, "REVALUE" },     // Subcommand follows in data byte
+            { 0x16, "READER CANCEL" }, // Renamed from UNUSED based on user list
+            { 0x17, "EXPANSION" }    // Subcommand follows in data byte
         };
-         // Add other peripheral command dictionaries as needed (Cashless2, Gateway, USD, etc.)
+         // Dictionary for Cashless #2 (0x60-0x67) - Assuming same commands for now
+         private static readonly Dictionary<byte, string> Cashless2Commands = new Dictionary<byte, string>
+        {
+            { 0x60, "RESET" },
+            { 0x61, "SETUP" },
+            { 0x62, "POLL" },
+            { 0x63, "VEND" },
+            { 0x64, "READER" },
+            { 0x65, "REVALUE" },
+            { 0x66, "READER CANCEL" },
+            { 0x67, "EXPANSION" }
+        };
+
+        // Add other peripheral command dictionaries as needed (Gateway, USD, etc.)
+
+         // --- Subcommand Dictionaries ---
+
+         private static readonly Dictionary<byte, string> CashlessSetupSubCommands = new Dictionary<byte, string>
+        {
+             { 0x00, "CONFIG DATA" },
+             { 0x01, "MAX/MIN PRICES" }
+        };
+         private static readonly Dictionary<byte, string> CashlessVendSubCommands = new Dictionary<byte, string>
+        {
+             { 0x00, "VEND REQUEST" }, // Note: User list showed 0x01, but doc Section 7.4.5 shows 0x00
+             { 0x01, "VEND CANCEL" }, // Doc Section 7.4.6
+             { 0x02, "VEND SUCCESS" }, // Doc Section 7.4.7
+             { 0x03, "VEND FAILURE" }, // Doc Section 7.4.8
+             { 0x04, "SESSION COMPLETE" }, // Doc Section 7.4.9
+             { 0x05, "CASH SALE" } // Doc Section 7.4.10
+             // Note: MDB 4.3 adds Item Number info to SUCCESS and CASH SALE
+        };
+         private static readonly Dictionary<byte, string> CashlessReaderSubCommands = new Dictionary<byte, string>
+        {
+             { 0x00, "READER DISABLE" }, // Doc Section 7.4.13
+             { 0x01, "READER ENABLE" } // Doc Section 7.4.12
+             // CANCEL is 0x16 command, not a subcommand of 0x14
+        };
+         private static readonly Dictionary<byte, string> CashlessRevalueSubCommands = new Dictionary<byte, string>
+        {
+             { 0x00, "REVALUE REQUEST" }, // Doc Section 7.4.16
+             { 0x01, "REVALUE LIMIT REQUEST" } // Doc Section 7.4.17
+             // Note: Denied/Approved are Reader *Responses*, not VMC subcommands
+        };
 
         private static readonly Dictionary<byte, string> ChangerExpansionSubCommands = new Dictionary<byte, string>
         {
@@ -568,42 +612,79 @@ namespace LabNation.Decoders
                             detail = "Addr";
                             byteColor = DecoderOutputColor.DarkBlue;
 
-                            // Try to identify command
-                            Dictionary<byte, string> commandDict = null;
-                            if ((address >= 0x08 && address < 0x10)) commandDict = ChangerCommands;       // Changer
-                            else if ((address >= 0x30 && address < 0x38)) commandDict = ValidatorCommands;   // Validator
-                            else if ((address >= 0x10 && address < 0x18)) commandDict = Cashless1Commands;   // Cashless1
-                            // Add other peripheral address ranges here...
+                            Dictionary<byte, string> commandDict = null; // Declare here
+                            bool isCashless = (address >= 0x10 && address < 0x18) || (address >= 0x60 && address < 0x68);
 
-                            if (commandDict != null && commandDict.TryGetValue(command, out commandName))
+                            // --- Command Identification Logic ---
+                            if (isCashless)
                             {
-                                detail += $": {commandName}";
-                                if (commandName == "EXPANSION" && block.Bytes.Count > 1)
+                                commandDict = (address >= 0x10 && address < 0x18) ? Cashless1Commands : Cashless2Commands;
+                                if (commandDict.TryGetValue(currentByte.Value, out commandName))
                                 {
-                                    // Try to determine the subcommand from the *next* byte
-                                    byte subCommandByte = block.Bytes[1].Value;
-                                    Dictionary<byte, string> subCommandDict = null;
-                                     if ((address >= 0x08 && address < 0x10)) subCommandDict = ChangerExpansionSubCommands;       // Changer
-                                    else if ((address >= 0x30 && address < 0x38)) subCommandDict = ValidatorExpansionSubCommands;   // Validator
-                                    else if ((address >= 0x10 && address < 0x18)) subCommandDict = CashlessExpansionSubCommands;    // Cashless1/2 (use same for now)
-                                     // Add other peripheral expansion command dicts here...
-
-                                    if (subCommandDict != null && subCommandDict.TryGetValue(subCommandByte, out string subName))
+                                    detail += $": {commandName}";
+                                    // Check if this Cashless command expects a subcommand
+                                    bool expectsSubCommand = commandName == "SETUP" || commandName == "VEND" || commandName == "READER" || commandName == "REVALUE" || commandName == "EXPANSION";
+                                    if (expectsSubCommand && block.Bytes.Count > 1)
                                     {
-                                        pendingSubCommandName = subName; // Store for the next byte (Data byte)
-                                    } else {
-                                         pendingSubCommandName = $"SubCmd=0x{subCommandByte:X2}"; // Unknown subcommand
+                                        byte subCommandByte = block.Bytes[1].Value;
+                                        Dictionary<byte, string> subCommandDict = null;
+                                        if(commandName == "SETUP") subCommandDict = CashlessSetupSubCommands;
+                                        else if(commandName == "VEND") subCommandDict = CashlessVendSubCommands;
+                                        else if(commandName == "READER") subCommandDict = CashlessReaderSubCommands;
+                                        else if(commandName == "REVALUE") subCommandDict = CashlessRevalueSubCommands;
+                                        else if(commandName == "EXPANSION") subCommandDict = CashlessExpansionSubCommands; // Assuming EXPANSION subcommands are consistent
+
+                                        if (subCommandDict != null && subCommandDict.TryGetValue(subCommandByte, out string subName))
+                                        {
+                                            pendingSubCommandName = subName;
+                                        } else {
+                                            pendingSubCommandName = $"SubCmd=0x{subCommandByte:X2}";
+                                        }
                                     }
                                 }
-                            } else {
-                                // Unknown command
-                                detail += $": Cmd=0x{command:X1}";
+                                else
+                                {
+                                     detail += $": ??? (0x{currentByte.Value:X2})"; // Unknown Cashless command byte
+                                }
+                            }
+                            else // Handle other peripherals (Changer, Validator, etc.)
+                            {
+                                // Use the lower 3 bits for command identification
+                                command = (byte)(currentByte.Value & 0x07);
+                                if ((address >= 0x08 && address < 0x10)) commandDict = ChangerCommands;
+                                else if ((address >= 0x30 && address < 0x38)) commandDict = ValidatorCommands;
+                                // Add other peripheral address ranges and dictionaries here...
+
+                                if (commandDict != null && commandDict.TryGetValue(command, out commandName))
+                                {
+                                    detail += $": {commandName}";
+                                    // Check for EXPANSION command (0x07) for non-cashless peripherals
+                                    if (command == 0x07 && block.Bytes.Count > 1)
+                                    {
+                                        byte subCommandByte = block.Bytes[1].Value;
+                                        Dictionary<byte, string> subCommandDict = null;
+                                        if ((address >= 0x08 && address < 0x10)) subCommandDict = ChangerExpansionSubCommands;
+                                        else if ((address >= 0x30 && address < 0x38)) subCommandDict = ValidatorExpansionSubCommands;
+                                        // Add other peripheral EXPANSION subcommand dictionaries here...
+
+                                        if (subCommandDict != null && subCommandDict.TryGetValue(subCommandByte, out string subName))
+                                        {
+                                            pendingSubCommandName = subName;
+                                        } else {
+                                            pendingSubCommandName = $"SubCmd=0x{subCommandByte:X2}";
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                     detail += $": Cmd=0x{command:X1}"; // Unknown command bits for this peripheral
+                                }
                             }
 
                         }
                         // If this is the data byte immediately following an EXPANSION command, show the sub-command name
-                        else if (isExpansionSubCommand) {
-                            detail = $"Data: {pendingSubCommandName}";
+                        else if (i == 1 && pendingSubCommandName != null && block.IsMasterToPeripheral && !currentByte.ModeBit) {
+                            detail = $"Data: {pendingSubCommandName}"; // Display the stored subcommand name
                             byteColor = DecoderOutputColor.Purple; // Use a distinct color for subcommands
                             isData = false; // Prevent it from being labeled as generic 'Data'
                             pendingSubCommandName = null; // Consume the pending name
