@@ -36,7 +36,7 @@ namespace LabNation.Decoders
                     VersionMajor = 0,
                     VersionMinor = 1,
                     Description = "Multi-Drop Bus (MDB) protocol decoder for vending machine peripherals.",
-                    InputWaveformTypes = new Dictionary<string, Type> { { "Input", typeof(bool) } },
+                    InputWaveformTypes = new Dictionary<string, Type> { { "Input", typeof(float) } },
                     // MDB has fixed settings (9600 baud, 8 data bits, 1 mode bit, 1 stop bit, no parity)
                     // Parameters might be added later for filtering specific device addresses, etc.
                     Parameters = new DecoderParameter[]
@@ -64,8 +64,24 @@ namespace LabNation.Decoders
 
             try
             {
-                var serialData = (bool[])inputWaveforms["Input"];
-                if (serialData == null || serialData.Length == 0)
+                // --- MODIFICATION START ---
+                // Get the input waveform, expecting float[] now based on wiki
+                var analogSamples = (float[])inputWaveforms["Input"];
+                if (analogSamples == null || analogSamples.Length == 0)
+                     return decoderOutputList.ToArray();
+
+                // Convert float samples to bool based on a threshold
+                float threshold = 1.5f; // Using 1.5V as a threshold - adjust if needed!
+                bool[] serialData = new bool[analogSamples.Length];
+                for(int i = 0; i < analogSamples.Length; i++)
+                {
+                     serialData[i] = analogSamples[i] > threshold;
+                }
+                // --- MODIFICATION END ---
+
+                // Original logic now uses the derived 'serialData' bool[] array
+                // var serialData = (bool[])inputWaveforms["Input"]; // OLD
+                if (serialData == null || serialData.Length == 0) // Check the converted array
                     return decoderOutputList.ToArray();
 
                 // MDB uses Idle High, Active Low (implied from Break condition description)
