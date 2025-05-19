@@ -544,11 +544,10 @@ namespace LabNation.Decoders
                         outputList.Add(new DecoderOutputEvent(blockStartIndex, blockEndIndex, DecoderOutputColor.Red, "NAK"));
                         continue; // Processed this block
                     }
-                    // If single byte, Mode=1, but not ACK/NAK, it's likely an incomplete/invalid block start
-                    // Or could be JUST RESET (0x00 with Mode=1) *after* a P->M block - needs context.
-                    // For simplicity now, treat as potentially invalid if direction wasn't clear
-                     outputList.Add(new DecoderOutputEvent(blockStartIndex, blockEndIndex, DecoderOutputColor.Orange, $"??? (0x{firstByte.Value:X2} M=1)"));
-
+                    // If single byte, Mode=1, but not ACK/NAK, it used to add a "???" event here.
+                    // That event is redundant because these responses will be handled by the main processing loop below,
+                    // which provides a more detailed DecoderOutputValueNumeric using GetPeripheralResponseName.
+                    // Thus, the line causing "???" for these cases is removed.
                 }
 
                 // --- Handle Multi-Byte Blocks (Master->Peripheral or Peripheral->Master Data) ---
