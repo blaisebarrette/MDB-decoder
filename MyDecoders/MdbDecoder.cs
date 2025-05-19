@@ -434,7 +434,11 @@ namespace LabNation.Decoders
 
                         DecoderOutputColor byteColor = blockColor;
 
-                        if (isAddr) { detail = "Addr"; byteColor = DecoderOutputColor.DarkBlue; }
+                        if (isAddr) {
+                            string peripheralType = GetPeripheralType(currentByte.Value);
+                            detail = $"Addr ({peripheralType})";
+                            byteColor = DecoderOutputColor.DarkBlue;
+                        }
                         if (isData) { detail = "Data"; byteColor = blockColor; }
                         if (isLastData) { detail = "LastData"; byteColor = DecoderOutputColor.Green; }
                         if (isChk) {
@@ -493,6 +497,43 @@ namespace LabNation.Decoders
                 }
 
 
+            }
+        }
+
+        /// <summary>
+        /// Determines the MDB peripheral type based on the address byte.
+        /// </summary>
+        /// <param name="address">The address byte.</param>
+        /// <returns>A string representing the peripheral type.</returns>
+        private static string GetPeripheralType(byte address)
+        {
+            // The peripheral type is determined by the 5 most significant bits (mask 0xF8).
+            byte addressBase = (byte)(address & 0xF8);
+
+            switch (addressBase)
+            {
+                case 0x00: return "VMC"; // Vending Machine Controller (Master)
+                case 0x08: return "Changer";
+                case 0x10: return "Cashless #1";
+                case 0x18: return "Comm Gateway";
+                case 0x20: return "Display";
+                case 0x28: return "Energy Mgmt";
+                case 0x30: return "Bill Validator";
+                case 0x38: return "Reserved (Future)";
+                case 0x40: return "USD #1"; // Universal Satellite Device
+                case 0x48: return "USD #2";
+                case 0x50: return "USD #3";
+                case 0x58: return "Dispenser #1"; // Coin Hopper/Tube
+                case 0x60: return "Cashless #2";
+                case 0x68: return "Age Verify"; // Note: Was Dispenser #2 in v4.0, changed to 70H in v4.1 for Dispenser #2
+                case 0x70: return "Dispenser #2"; // Coin Hopper/Tube
+                case byte n when (n >= 0x78 && n <= 0xD8): return "Reserved (Future)";
+                // Specific addresses for Experimental/VMS based on user's list (E0H, E8H, F0H, F8H)
+                case 0xE0: 
+                case 0xE8: 
+                case 0xF0: 
+                case 0xF8: return "Experimental/VMS";
+                default: return "Unknown Device";
             }
         }
 
