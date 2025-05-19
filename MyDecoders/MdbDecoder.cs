@@ -222,6 +222,220 @@ namespace LabNation.Decoders
 
         // ---- Helper Methods for MDB ----
 
+        private static readonly Dictionary<byte, string> GeneralPeripheralResponses = new Dictionary<byte, string>
+        {
+            { 0x00, "JUST RESET" },
+            // ACK and NAK are handled separately due to their commonality and single-byte nature
+            // { 0x01, "ACK" }, // Typically handled as ACK
+            // { 0xFF, "NAK" }, // Typically handled as NAK
+            { 0x0B, "COMMAND OUT OF SEQUENCE (Cashless)" }, // Specific to Cashless, but good to have
+            { 0x0A, "MALFUNCTION / ERROR" }
+            // Other specific responses would be too numerous to list here generically
+        };
+
+        private static readonly Dictionary<string, Dictionary<byte, string>> MainCommands = new Dictionary<string, Dictionary<byte, string>>
+        {
+            {
+                "Changer", new Dictionary<byte, string>
+                {
+                    { 0x08, "RESET" }, { 0x09, "SETUP" }, { 0x0A, "TUBE STATUS" }, { 0x0B, "POLL" },
+                    { 0x0C, "COIN TYPE" }, { 0x0D, "DISPENSE" }, { 0x0E, "EXTENSION" }, { 0x0F, "EXPANSION" }
+                }
+            },
+            {
+                "Bill Validator", new Dictionary<byte, string>
+                {
+                    { 0x30, "RESET" }, { 0x31, "SETUP" }, { 0x32, "SECURITY" }, { 0x33, "POLL" },
+                    { 0x34, "BILL TYPE" }, { 0x35, "ESCROW" }, { 0x36, "STACKER" }, { 0x37, "EXPANSION" }
+                }
+            },
+            {
+                "Cashless #1", new Dictionary<byte, string>
+                {
+                    { 0x10, "RESET" }, { 0x11, "SETUP" }, { 0x12, "POLL" }, { 0x13, "VEND" },
+                    { 0x14, "READER" }, { 0x15, "REVALUE" }, { 0x16, "READER ENABLE" }, { 0x17, "EXPANSION" }
+                }
+            },
+            {
+                "Cashless #2", new Dictionary<byte, string>
+                {
+                    { 0x60, "RESET" }, { 0x61, "SETUP" }, { 0x62, "POLL" }, { 0x63, "VEND" },
+                    { 0x64, "READER" }, { 0x65, "REVALUE" }, { 0x66, "READER ENABLE" }, { 0x67, "EXPANSION" }
+                }
+            },
+            {
+                "Dispenser #1", new Dictionary<byte, string> // Coin Hopper/Tube
+                {
+                    { 0x58, "RESET" }, { 0x59, "SETUP" }, { 0x5A, "DISPENSER STATUS" }, { 0x5B, "POLL" },
+                    { 0x5C, "MANUAL DISPENSE ENABLE" }, { 0x5D, "DISPENSE" }, { 0x5E, "PAYOUT" }, { 0x5F, "EXPANSION" }
+                }
+            },
+            {
+                "Dispenser #2", new Dictionary<byte, string> // Coin Hopper/Tube
+                {
+                    { 0x70, "RESET" }, { 0x71, "SETUP" }, { 0x72, "DISPENSER STATUS" }, { 0x73, "POLL" },
+                    { 0x74, "MANUAL DISPENSE ENABLE" }, { 0x75, "DISPENSE" }, { 0x76, "PAYOUT" }, { 0x77, "EXPANSION" }
+                }
+            }
+            // Other peripherals can be added here
+        };
+
+        private static readonly Dictionary<string, Dictionary<byte, Dictionary<byte, string>>> SubCommands = new Dictionary<string, Dictionary<byte, Dictionary<byte, string>>>
+        {
+            {
+                "Changer", new Dictionary<byte, Dictionary<byte, string>>
+                {
+                    { 0x0F, new Dictionary<byte, string> { { 0x00, "IDENTIFICATION" }, { 0x07, "SEND CTRL MANUAL PAYOUT REPORT" } } } // EXPANSION
+                    // DISPENSE (0x0D) might have subcommands (e.g. value) but it's more like data
+                }
+            },
+            {
+                "Bill Validator", new Dictionary<byte, Dictionary<byte, string>>
+                {
+                    {
+                        0x37, new Dictionary<byte, string> // EXPANSION
+                        {
+                            { 0x00, "LVL1 ID NO OPT" }, { 0x01, "FEATURE ENABLE" }, { 0x02, "LVL2+ ID W/ OPT" },
+                            { 0x03, "RECYCLER SETUP" }, { 0x05, "BILL DISPENSE STATUS" }, { 0x06, "DISPENSE BILL" },
+                            { 0x07, "DISPENSE VALUE" }, { 0x08, "PAYOUT STATUS" }, { 0x09, "PAYOUT VALUE POLL" },
+                            { 0x0A, "PAYOUT CANCEL" }, { 0xFA, "FTL REQ TO RCV" }, { 0xFE, "FTL REQ TO SEND" },
+                            { 0xFF, "DIAGNOSTICS" }
+                        }
+                    }
+                }
+            },
+            {
+                "Cashless #1", new Dictionary<byte, Dictionary<byte, string>>
+                {
+                    {
+                        0x11, new Dictionary<byte, string> // SETUP
+                        { { 0x00, "Config Data" }, { 0x01, "Max/Min Prices" } }
+                    },
+                    {
+                        0x13, new Dictionary<byte, string> // VEND
+                        {
+                            { 0x00, "Vend Request" }, { 0x01, "Vend Cancel" }, { 0x04, "Session Complete" },
+                            { 0x05, "Cash Sale" }, { 0x06, "Negative Vend Request" }, { 0x08, "Coupon Reply" }
+                        }
+                    },
+                    {
+                        0x15, new Dictionary<byte, string> // REVALUE
+                        { { 0x00, "Revalue Request" }, { 0x01, "Revalue Limit Request" } }
+                    },
+                    {
+                        0x17, new Dictionary<byte, string> // EXPANSION
+                        {
+                            { 0x00, "Expansion Req ID" }, { 0x04, "Opt Feature Bit Enable" }, { 0xFA, "FTL REQ TO RCV" },
+                            { 0xFE, "FTL REQ TO SEND" }, { 0xFF, "DIAGNOSTICS" }
+                        }
+                    }
+                }
+            },
+            {
+                "Cashless #2", new Dictionary<byte, Dictionary<byte, string>> // Similar to Cashless #1 but with 0x60 base
+                {
+                    {
+                        0x61, new Dictionary<byte, string> // SETUP
+                        { { 0x00, "Config Data" }, { 0x01, "Max/Min Prices" } }
+                    },
+                    {
+                        0x63, new Dictionary<byte, string> // VEND
+                        {
+                            { 0x00, "Vend Request" }, { 0x01, "Vend Cancel" }, { 0x04, "Session Complete" },
+                            { 0x05, "Cash Sale" }, { 0x06, "Negative Vend Request" }, { 0x08, "Coupon Reply" }
+                        }
+                    },
+                    {
+                        0x65, new Dictionary<byte, string> // REVALUE
+                        { { 0x00, "Revalue Request" }, { 0x01, "Revalue Limit Request" } }
+                    },
+                    {
+                        0x67, new Dictionary<byte, string> // EXPANSION
+                        {
+                            { 0x00, "Expansion Req ID" }, { 0x04, "Opt Feature Bit Enable" }, { 0xFA, "FTL REQ TO RCV" },
+                            { 0xFE, "FTL REQ TO SEND" }, { 0xFF, "DIAGNOSTICS" }
+                        }
+                    }
+                }
+            },
+            {
+                "Dispenser #1", new Dictionary<byte, Dictionary<byte, string>>
+                {
+                    // DISPENSE (0x5D) uses data byte for value, not typical sub-command
+                    // PAYOUT (0x5E)
+                     { 0x5E, new Dictionary<byte, string> { { 0x00, "STATUS" } } }, // PAYOUT
+                    {
+                        0x5F, new Dictionary<byte, string> // EXPANSION
+                        {
+                            { 0x00, "IDENTIFICATION" }, { 0x01, "FEATURE ENABLE" }, { 0xFA, "FTL REQ TO RCV" },
+                            { 0xFE, "FTL REQ TO SEND" }, { 0xFF, "DIAGNOSTICS" }
+                        }
+                    }
+                }
+            },
+            {
+                "Dispenser #2", new Dictionary<byte, Dictionary<byte, string>>
+                {
+                    // DISPENSE (0x75) uses data byte for value
+                    // PAYOUT (0x76)
+                    { 0x76, new Dictionary<byte, string> { { 0x00, "STATUS" } } }, // PAYOUT
+                    {
+                        0x77, new Dictionary<byte, string> // EXPANSION
+                        {
+                            { 0x00, "IDENTIFICATION" }, { 0x01, "FEATURE ENABLE" }, { 0xFA, "FTL REQ TO RCV" },
+                            { 0xFE, "FTL REQ TO SEND" }, { 0xFF, "DIAGNOSTICS" }
+                        }
+                    }
+                }
+            }
+        };
+
+        private static string GetMdbCommandDetails(MdbByte addressByte, MdbByte? subCommandByte, string peripheralType)
+        {
+            StringBuilder commandDetails = new StringBuilder();
+            byte peripheralAddrBase = (byte)(addressByte.Value & 0xF8);
+            byte cmdCodeOnly = (byte)(addressByte.Value); // Full byte for command lookup
+
+            if (MainCommands.TryGetValue(peripheralType, out var commands) && commands.TryGetValue(cmdCodeOnly, out var commandName))
+            {
+                commandDetails.Append($"{commandName}");
+
+                // Check for sub-commands
+                if (subCommandByte != null && !subCommandByte.ModeBit) // SubCommand byte must have ModeBit = 0
+                {
+                    if (SubCommands.TryGetValue(peripheralType, out var peripheralSubCommands) &&
+                        peripheralSubCommands.TryGetValue(cmdCodeOnly, out var specificSubCommands) &&
+                        specificSubCommands.TryGetValue(subCommandByte.Value, out var subCommandName))
+                    {
+                        commandDetails.Append($": {subCommandName}");
+                    }
+                    else if (commandName == "DISPENSE" || commandName == "PAYOUT") // Common commands with data bytes not strictly "subcommands"
+                    {
+                        // For commands like DISPENSE, the subcommand byte is actually data (e.g., amount)
+                        // We can just show its value or handle it as "Data" if no specific name.
+                        // commandDetails.Append($" (Data: 0x{subCommandByte.Value.Value:X2})");
+                        // Or, we might not append anything here if the next byte's detail will show "Data"
+                    }
+                }
+            }
+            else
+            {
+                commandDetails.Append($"Cmd 0x{cmdCodeOnly:X2}"); // Fallback
+            }
+            return commandDetails.ToString();
+        }
+
+        private static string GetPeripheralResponseName(byte responseByteValue, string peripheralType)
+        {
+            // Specific peripheral responses could be added here if needed, similar to MainCommands
+            // For now, using a general list
+            if (GeneralPeripheralResponses.TryGetValue(responseByteValue, out var responseName))
+            {
+                return responseName;
+            }
+            return $"Resp 0x{responseByteValue:X2}"; // Fallback
+        }
+
         /// <summary>
         /// Represents a single decoded MDB byte with its mode bit.
         /// </summary>
@@ -416,44 +630,97 @@ namespace LabNation.Decoders
                         chkOk = (calculatedChk == potentialChkByte.Value);
                     }
 
+                    string peripheralTypeForBlock = "Unknown";
+                    if (block.IsMasterToPeripheral && block.Bytes.Count > 0)
+                    {
+                        peripheralTypeForBlock = GetPeripheralType(block.Bytes[0].Value);
+                    }
+
                     for(int i=0; i < block.Bytes.Count; i++)
                     {
                         MdbByte currentByte = block.Bytes[i];
-                        string detail = string.Empty; // Detail string for DecoderOutputValueNumeric
+                        string detail = string.Empty;
 
-                        // Determine byte type for coloring and detail string
-                        bool isAddr = i == 0 && block.IsMasterToPeripheral && currentByte.ModeBit;
-                        // Adjust lastDataByteIndex check for robustness
-                        int actualLastDataByteIndex = -1;
-                        if (!block.IsMasterToPeripheral && checksumExpected) {
-                             actualLastDataByteIndex = dataBytesForChk.Count - 1;
+                        bool isAddrByte = i == 0 && block.IsMasterToPeripheral && currentByte.ModeBit;
+                        MdbByte? subCmdByteCandidate = null;
+                        if (isAddrByte && i + 1 < block.Bytes.Count && !block.Bytes[i+1].ModeBit)
+                        {
+                            subCmdByteCandidate = block.Bytes[i+1];
                         }
-                        bool isLastData = !block.IsMasterToPeripheral && i == actualLastDataByteIndex && currentByte.ModeBit;
+                        
+                        bool isSubCmdDataByte = i == 1 && block.IsMasterToPeripheral && !currentByte.ModeBit && 
+                                              (MainCommands.ContainsKey(peripheralTypeForBlock) && 
+                                               SubCommands.ContainsKey(peripheralTypeForBlock) && 
+                                               SubCommands[peripheralTypeForBlock].ContainsKey(block.Bytes[0].Value));
+
                         bool isChk = i == block.Bytes.Count - 1 && checksumExpected && !currentByte.ModeBit;
-                        bool isData = !isAddr && !isLastData && !isChk;
+                        // Determine if this is the last data byte in a P->M message before CHK
+                        bool isLastDataInPM = false;
+                        if (!block.IsMasterToPeripheral && checksumExpected && dataBytesForChk.Count > 0)
+                        {
+                            if (dataBytesForChk.Last() == currentByte && currentByte.ModeBit)
+                                isLastDataInPM = true;
+                        }
+                        
+                        bool isGenericData = !(isAddrByte || isSubCmdDataByte || isChk || isLastDataInPM);
 
-                        DecoderOutputColor byteColor = blockColor;
+                        DecoderOutputColor byteColor = blockColor; // Default to block color
 
-                        if (isAddr) {
-                            string peripheralType = GetPeripheralType(currentByte.Value);
-                            detail = $"Addr ({peripheralType})";
+                        if (isAddrByte)
+                        {
+                            string commandStr = GetMdbCommandDetails(currentByte, subCmdByteCandidate, peripheralTypeForBlock);
+                            detail = $"Addr ({peripheralTypeForBlock}) - {commandStr}";
                             byteColor = DecoderOutputColor.DarkBlue;
                         }
-                        if (isData) { detail = "Data"; byteColor = blockColor; }
-                        if (isLastData) { detail = "LastData"; byteColor = DecoderOutputColor.Green; }
-                        if (isChk) {
+                        else if (isSubCmdDataByte)
+                        {
+                            // The command detail is on the AddrByte, this byte is the SubCmd data itself
+                            // We can retrieve the sub-command name again if needed for this specific byte, or just label it generically
+                            string subCmdName = "SubCmd Data"; // Default
+                            if (SubCommands.TryGetValue(peripheralTypeForBlock, out var peripheralSubCmds) &&
+                                peripheralSubCmds.TryGetValue(block.Bytes[0].Value, out var specificSubCmds) &&
+                                specificSubCmds.TryGetValue(currentByte.Value, out var actualSubCmdName)) 
+                            {
+                                subCmdName = actualSubCmdName;
+                            }
+                            detail = subCmdName;
+                            byteColor = DecoderOutputColor.Orange; // Different color for sub-command data
+                        }
+                        else if (isLastDataInPM)
+                        {
+                            detail = "LastData";
+                            byteColor = DecoderOutputColor.Green;
+                        }
+                        else if (isChk)
+                        {
                              detail = "CHK";
                              byteColor = chkOk ? DecoderOutputColor.Green : DecoderOutputColor.Red;
-                             // Append checksum status directly to the detail string for the CHK byte
                              detail += chkOk ? " OK" : $" ERR (exp {calculatedChk:X2})";
                         }
-
-                        // Add Mode bit info to detail (unless it's CHK, where status was just added)
-                        if (!isChk) {
-                           detail += $" M={(currentByte.ModeBit ? 1 : 0)}";
+                        else if (isGenericData) // General data byte
+                        {
+                            if (!block.IsMasterToPeripheral && currentByte.ModeBit && i == 0) // First byte of P->M, likely response
+                            {
+                                detail = GetPeripheralResponseName(currentByte.Value, peripheralTypeForBlock); // peripheralTypeForBlock might be from previous M->P
+                                byteColor = DecoderOutputColor.Orange; // Color for responses
+                            }
+                            else
+                            {
+                                detail = "Data";
+                                byteColor = blockColor;
+                            }
                         }
 
-                        // Add individual byte value output
+                        // Append Mode bit info to detail (unless it's CHK or already part of command string for Addr)
+                        if (!isChk && !isAddrByte) // For AddrByte, mode is implicit (must be 1)
+                        {
+                           detail += $" M={(currentByte.ModeBit ? 1 : 0)}";
+                        }
+                        else if (isAddrByte) // For AddrByte, the mode is 1. If GetMdbCommandDetails didn't add it, it's fine.
+                        {
+                            // Confirming mode bit is 1 for address byte, already handled by isAddrByte condition
+                        }
+
                         outputList.Add(new DecoderOutputValueNumeric(
                             currentByte.StartIndex,
                             currentByte.EndIndex,
